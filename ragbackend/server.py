@@ -80,6 +80,6 @@ async def health_check():
     }
 
 # Include routers
-APP.include_router(collections_router, prefix="/collections", tags=["Collections"])
+APP.include_router(collections_router, tags=["Collections"])
 
 logger.info(f"FastAPI application configured: {APP_NAME} v{APP_VERSION}")

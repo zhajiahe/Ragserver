@@ -3,6 +3,24 @@
 
 RagBackend is a RAG (Retrieval-Augmented Generation) service built with FastAPI that provides a REST API for managing collections and documents, using PostgreSQL with pgvector for vector storage.
 
+## 🔒 Latest Security Updates (v0.0.2 - 2025-06-22)
+
+### Security Fixes
+- **Fixed SQL Injection Vulnerabilities**: Added comprehensive UUID validation for all database operations
+- **Secure Table Name Generation**: Implemented safe table name validation to prevent injection attacks
+- **Enhanced Input Validation**: Added parameter validation and type checking across all endpoints
+
+### Bug Fixes
+- **Database Schema Consistency**: Fixed missing `embedding_provider` field in collections table
+- **API Response Consistency**: Unified response fields across all endpoints to include `embedding_provider`
+- **HTTP 204 Response Fix**: Corrected delete endpoint response format
+- **Route Registration Fix**: Resolved duplicate prefix issues in API routing
+
+### Code Quality Improvements
+- **Dependency Injection Pattern**: Refactored global variables to `DatabaseManager` class
+- **Better Architecture**: Improved connection pool management and encapsulation
+- **Backward Compatibility**: Maintained compatibility with existing code through legacy functions
+
 ## TODO
 
 ### Phase 1: Infrastructure ✅

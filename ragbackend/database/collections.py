@@ -7,6 +7,7 @@ from uuid import UUID
 from datetime import datetime
 
 from ragbackend.database.connection import get_db_connection
+from ragbackend.utils.validators import validate_uuid, validate_and_sanitize_table_name, validate_collection_name
 
 logger = logging.getLogger(__name__)
 
@@ -18,6 +19,9 @@ async def create_collection(
     embedding_provider: str = "ollama"
 ) -> Dict[str, Any]:
     """Create a new collection."""
+    # Validate collection name
+    name = validate_collection_name(name)
+    
     async with get_db_connection() as conn:
         # Insert collection
         row = await conn.fetchrow("""
@@ -28,8 +32,8 @@ async def create_collection(
         
         collection_id = row['id']
         
-        # Create vector table for this collection
-        vector_table_name = f"collection_{str(collection_id).replace('-', '_')}_vectors"
+        # Create vector table for this collection using safe table name
+        vector_table_name = validate_and_sanitize_table_name(str(collection_id))
         await conn.execute(f"""
             CREATE TABLE {vector_table_name} (
                 id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -55,6 +59,7 @@ async def create_collection(
             'name': row['name'],
             'description': row['description'],
             'embedding_model': row['embedding_model'],
+            'embedding_provider': row['embedding_provider'],
             'created_at': row['created_at'].isoformat(),
             'updated_at': row['updated_at'].isoformat()
         }
@@ -62,12 +67,15 @@ async def create_collection(
 
 async def get_collection_by_id(collection_id: str) -> Optional[Dict[str, Any]]:
     """Get collection by ID."""
+    # Validate UUID format
+    uuid_obj = validate_uuid(collection_id)
+    
     async with get_db_connection() as conn:
         row = await conn.fetchrow("""
-            SELECT id, name, description, embedding_model, created_at, updated_at
+            SELECT id, name, description, embedding_model, embedding_provider, created_at, updated_at
             FROM collections
             WHERE id = $1
-        """, UUID(collection_id))
+        """, uuid_obj)
         
         if not row:
             return None
@@ -77,6 +85,7 @@ async def get_collection_by_id(collection_id: str) -> Optional[Dict[str, Any]]:
             'name': row['name'],
             'description': row['description'],
             'embedding_model': row['embedding_model'],
+            'embedding_provider': row['embedding_provider'],
             'created_at': row['created_at'].isoformat(),
             'updated_at': row['updated_at'].isoformat()
         }
@@ -86,7 +95,7 @@ async def get_all_collections() -> List[Dict[str, Any]]:
     """Get all collections."""
     async with get_db_connection() as conn:
         rows = await conn.fetch("""
-            SELECT id, name, description, embedding_model, created_at, updated_at
+            SELECT id, name, description, embedding_model, embedding_provider, created_at, updated_at
             FROM collections
             ORDER BY created_at DESC
         """)
@@ -97,6 +106,7 @@ async def get_all_collections() -> List[Dict[str, Any]]:
                 'name': row['name'],
                 'description': row['description'],
                 'embedding_model': row['embedding_model'],
+                'embedding_provider': row['embedding_provider'],
                 'created_at': row['created_at'].isoformat(),
                 'updated_at': row['updated_at'].isoformat()
             }
@@ -110,6 +120,13 @@ async def update_collection(
     description: Optional[str] = None
 ) -> Optional[Dict[str, Any]]:
     """Update collection."""
+    # Validate UUID format
+    uuid_obj = validate_uuid(collection_id)
+    
+    # Validate collection name if provided
+    if name is not None:
+        name = validate_collection_name(name)
+    
     updates = []
     values = []
     param_count = 1
@@ -128,13 +145,13 @@ async def update_collection(
         return await get_collection_by_id(collection_id)
     
     updates.append(f"updated_at = NOW()")
-    values.append(UUID(collection_id))
+    values.append(uuid_obj)
     
     query = f"""
         UPDATE collections 
         SET {', '.join(updates)}
         WHERE id = ${param_count}
-        RETURNING id, name, description, embedding_model, created_at, updated_at
+        RETURNING id, name, description, embedding_model, embedding_provider, created_at, updated_at
     """
     
     async with get_db_connection() as conn:
@@ -156,18 +173,21 @@ async def update_collection(
 
 async def delete_collection(collection_id: str) -> bool:
     """Delete collection and its vector table."""
+    # Validate UUID format
+    uuid_obj = validate_uuid(collection_id)
+    
     async with get_db_connection() as conn:
         async with conn.transaction():
             # Check if collection exists
             collection = await conn.fetchrow("""
                 SELECT id FROM collections WHERE id = $1
-            """, UUID(collection_id))
+            """, uuid_obj)
             
             if not collection:
                 return False
             
-            # Drop vector table
-            vector_table_name = f"collection_{str(collection['id']).replace('-', '_')}_vectors"
+            # Drop vector table using safe table name
+            vector_table_name = validate_and_sanitize_table_name(str(collection['id']))
             try:
                 await conn.execute(f"DROP TABLE IF EXISTS {vector_table_name} CASCADE;")
                 logger.info(f"Dropped vector table {vector_table_name}")
@@ -177,7 +197,7 @@ async def delete_collection(collection_id: str) -> bool:
             # Delete collection (files will be deleted by CASCADE)
             result = await conn.execute("""
                 DELETE FROM collections WHERE id = $1
-            """, UUID(collection_id))
+            """, uuid_obj)
             
             deleted_count = int(result.split()[-1])
             return deleted_count > 0
@@ -185,4 +205,4 @@ async def delete_collection(collection_id: str) -> bool:
 
 async def get_vector_table_name(collection_id: str) -> str:
     """Get vector table name for collection."""
-    return f"collection_{str(collection_id).replace('-', '_')}_vectors"
+    return validate_and_sanitize_table_name(collection_id)
