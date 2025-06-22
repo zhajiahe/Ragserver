@@ -1,0 +1,7 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Python环境
+1. 本项目使用uv管理环境（source .venv/bin/activate）

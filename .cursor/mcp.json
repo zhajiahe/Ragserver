@@ -1,0 +1,46 @@
+{
+    "mcpServers": {
+      "fetch": {
+        "command": "uvx",
+        "args": ["mcp-server-fetch"]
+      },    
+      "sequential-thinking": {
+        "command": "npx",
+        "args": [
+            "-y",
+            "@modelcontextprotocol/server-sequential-thinking"
+        ]
+      },
+      "mcp-feedback-enhanced": {
+        "command": "uvx",
+        "args": ["mcp-feedback-enhanced@latest"],
+        "timeout": 6000,
+        "autoApprove": ["interactive_feedback"],
+        "env": {
+          "FORCE_WEB": "true",
+          "MCP_DEBUG": "false",
+          "MCP_WEB_PORT": "8765"
+              }
+        },
+      "mcp-deepwiki": {
+        "command": "npx",
+        "args": ["-y", "mcp-deepwiki@latest"]
+      },
+      "git": {
+        "command": "uvx",
+        "args": ["mcp-server-git"]
+      },
+      "my_postgres_db": {
+        "command": "uvx",
+        "args": ["--from", "mcp-alchemy==2025.6.19.201831", "--with", "psycopg2-binary",
+                "--refresh-package", "mcp-alchemy", "mcp-alchemy"],
+        "env": {
+            "DB_URL": "postgresql://postgres:postgres@localhost:5432/postgres"
+        }
+      },
+      "time": {
+        "command": "uvx",
+        "args": ["mcp-server-time"]
+      }
+    }
+  }
