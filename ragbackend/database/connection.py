@@ -19,13 +19,27 @@ class DatabaseManager:
     async def init_pool(self) -> asyncpg.Pool:
         """Initialize database connection pool."""
         try:
+            # 定义连接初始化函数
+            async def init_connection(conn):
+                await conn.execute("CREATE EXTENSION IF NOT EXISTS vector")
+                # 注册vector类型编解码器
+                await conn.set_type_codec(
+                    'vector',
+                    encoder=lambda v: '[' + ','.join(map(str, v)) + ']',
+                    decoder=lambda s: [float(x) for x in s.strip('[]').split(',')]
+                )
+            
+            # 使用init参数创建连接池
             self._pool = await asyncpg.create_pool(
                 DATABASE_URL,
                 min_size=5,
                 max_size=20,
-                command_timeout=60
+                command_timeout=60,
+                init=init_connection  # 正确的方式传递初始化函数
             )
+            
             logger.info("Database connection pool initialized successfully")
+            logger.info("pgvector类型已注册到所有连接")
             return self._pool
         except Exception as e:
             logger.error(f"Failed to initialize database pool: {e}")

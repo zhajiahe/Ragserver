@@ -4,6 +4,7 @@ import logging
 from typing import List, Dict, Any, Optional, NamedTuple
 from uuid import UUID
 import asyncpg
+import json
 
 from ragbackend.database.connection import get_db_connection
 from ragbackend.utils.validators import validate_uuid, validate_and_sanitize_table_name
@@ -46,17 +47,24 @@ async def insert_vectors(collection_id: str, vector_docs: List[VectorDocument]) 
         uuid_obj = validate_uuid(collection_id)
         table_name = validate_and_sanitize_table_name(str(uuid_obj))
         
+        logger.info(f"开始向量插入: 集合 {collection_id}, 表名 {table_name}, 向量数量 {len(vector_docs)}")
+        
         async with get_db_connection() as conn:
             # 准备批量插入数据
             records = []
             for doc in vector_docs:
                 file_uuid = validate_uuid(doc.file_id)
+                # 将元数据转换为JSON字符串以兼容asyncpg
+                metadata_json = json.dumps(doc.metadata) if doc.metadata else json.dumps({})
+                # 现在可以直接使用Python列表，因为已经注册了vector类型
                 records.append((
                     file_uuid,
                     doc.content,
-                    doc.metadata,
-                    doc.embedding
+                    metadata_json,
+                    doc.embedding  # 直接使用Python列表
                 ))
+            
+            logger.info(f"准备插入数据: {len(records)} 条记录")
             
             # 批量插入
             await conn.executemany(f"""
@@ -69,6 +77,9 @@ async def insert_vectors(collection_id: str, vector_docs: List[VectorDocument]) 
             
     except Exception as e:
         logger.error(f"向量插入失败: {e}")
+        logger.error(f"集合ID: {collection_id}, 向量数量: {len(vector_docs) if vector_docs else 0}")
+        import traceback
+        logger.error(f"堆栈跟踪: {traceback.format_exc()}")
         return False
 
 
@@ -95,6 +106,7 @@ async def search_vectors(
         uuid_obj = validate_uuid(collection_id)
         table_name = validate_and_sanitize_table_name(str(uuid_obj))
         
+        # 现在可以直接使用Python列表，因为已经注册了vector类型
         # 构建查询SQL
         base_sql = f"""
             SELECT id, content, metadata, 
@@ -102,7 +114,8 @@ async def search_vectors(
             FROM {table_name}
         """
         
-        params = [query_embedding]
+        params = [query_embedding]  # 直接使用Python列表
+        
         where_conditions = []
         
         # 添加元数据过滤条件
@@ -122,10 +135,18 @@ async def search_vectors(
             
             results = []
             for row in rows:
+                # 解析JSON格式的metadata
+                metadata = {}
+                if row['metadata']:
+                    try:
+                        metadata = json.loads(row['metadata']) if isinstance(row['metadata'], str) else row['metadata']
+                    except (json.JSONDecodeError, TypeError):
+                        metadata = {}
+                
                 result = SearchResult(
                     id=str(row['id']),
                     content=row['content'],
-                    metadata=row['metadata'] or {},
+                    metadata=metadata,
                     score=float(row['score'])
                 )
                 results.append(result)

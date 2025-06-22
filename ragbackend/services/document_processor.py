@@ -93,21 +93,37 @@ class DocumentProcessor:
             # 准备向量文档
             vector_docs = []
             for i, (chunk, embedding) in enumerate(zip(chunks, embeddings)):
+                # 确保元数据只包含可序列化的基本类型
+                clean_metadata = {
+                    "chunk_index": i,
+                    "filename": file_info['filename'],
+                    "content_type": file_info['content_type']
+                }
+                
+                # 添加chunk的元数据，但只保留基本类型
+                if chunk.metadata:
+                    for key, value in chunk.metadata.items():
+                        if isinstance(value, (str, int, float, bool, type(None))):
+                            clean_metadata[key] = value
+                        else:
+                            clean_metadata[key] = str(value)  # 转换为字符串
+                
                 vector_doc = VectorDocument(
                     file_id=file_id,
                     content=chunk.page_content,
-                    metadata={
-                        **chunk.metadata,
-                        "chunk_index": i,
-                        "filename": file_info['filename'],
-                        "content_type": file_info['content_type']
-                    },
+                    metadata=clean_metadata,
                     embedding=embedding
                 )
                 vector_docs.append(vector_doc)
             
             # 存储到向量数据库
-            await insert_vectors(collection['id'], vector_docs)
+            logger.info(f"准备插入 {len(vector_docs)} 个向量到集合 {collection['id']}")
+            insert_success = await insert_vectors(collection['id'], vector_docs)
+            
+            if not insert_success:
+                logger.error(f"向量插入失败: {file_id}")
+                await db_files.update_file_status(file_id, "failed")
+                return False
             
             # 更新文件状态为完成
             await db_files.update_file_status(file_id, "completed")

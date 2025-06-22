@@ -1874,7 +1874,7 @@ wheels = [
 
 [[package]]
 name = "ragbackend"
-version = "0.0.1"
+version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "aiohttp" },
