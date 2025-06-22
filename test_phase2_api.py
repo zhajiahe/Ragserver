@@ -36,38 +36,15 @@ async def test_phase2_functionality():
                 print(f"❌ 集合创建失败: {resp.status}")
                 return
         
-        # 2. 创建测试文档
-        print("\n📄 创建测试文档...")
-        test_content = """
-这是一个测试文档。
-
-# RAG系统介绍
-
-RAG（Retrieval-Augmented Generation）是一种结合检索和生成的人工智能技术。
-
-## 主要特点
-
-1. 检索相关文档
-2. 结合检索结果生成回答
-3. 提高回答的准确性和相关性
-
-## 应用场景
-
-- 问答系统
-- 文档助手
-- 知识库查询
-
-这个文档包含了关于RAG系统的基本信息。
-        """
+        # 2. 使用langgraph.txt作为测试文档
+        print("\n📄 使用langgraph.txt作为测试文档...")
         
-        test_file_path = "/tmp/test_rag_doc.txt"
-        with open(test_file_path, "w", encoding="utf-8") as f:
-            f.write(test_content)
+        test_file_path = "/Users/zhanghuaao/projects/RagBackend/datas/test.txt"
         
         # 3. 上传文件
         print("\n📤 上传测试文件...")
         data = aiohttp.FormData()
-        data.add_field('file', open(test_file_path, 'rb'), filename='test_rag_doc.txt', content_type='text/plain')
+        data.add_field('file', open(test_file_path, 'rb'), filename='langgraph.txt', content_type='text/plain')
         
         async with session.post(f"{BASE_URL}/collections/{collection_id}/files", data=data) as resp:
             if resp.status == 201:
@@ -160,7 +137,6 @@ RAG（Retrieval-Augmented Generation）是一种结合检索和生成的人工�
         
         # 清理
         print("\n🧹 清理测试数据...")
-        Path(test_file_path).unlink(missing_ok=True)
         
         # 删除文件
         async with session.delete(f"{BASE_URL}/files/{file_id}") as resp:

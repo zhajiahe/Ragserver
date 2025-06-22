@@ -134,48 +134,32 @@ async def test_full_pipeline():
                 error_text = await resp.text()
                 print(f"   ❌ 集合创建失败: {resp.status}, {error_text}")
                 return False
-        
-        # 2. 创建测试文档
-        print("   📄 创建测试文档...")
-        test_content = """
-测试文档内容
 
-这是一个用于测试RAG系统的简单文档。
 
-主要内容：
-1. 文档解析测试
-2. 文本分块测试
-3. 向量化测试
-4. 搜索功能测试
-
-这个文档应该能够被正确处理和索引。
-        """
+        # 2. 使用langgraph.txt作为测试文档
+        print("\n📄 使用langgraph.txt作为测试文档...")
         
-        test_file_path = "/tmp/debug_test_doc.txt"
-        with open(test_file_path, "w", encoding="utf-8") as f:
-            f.write(test_content)
+        test_file_path = "/Users/zhanghuaao/projects/RagBackend/datas/test.txt"
         
-        # 3. 上传文件
-        print("   📤 上传测试文件...")
+        print("\n📤 上传测试文件...")
         data = aiohttp.FormData()
-        data.add_field('file', open(test_file_path, 'rb'), 
-                      filename='debug_test_doc.txt', content_type='text/plain')
+        data.add_field('file', open(test_file_path, 'rb'), filename='langgraph.txt', content_type='text/plain')
         
         async with session.post(f"{BASE_URL}/collections/{collection_id}/files", data=data) as resp:
             if resp.status == 201:
                 file_response = await resp.json()
                 file_id = file_response["id"]
-                print(f"   ✅ 文件上传成功: {file_id}")
+                print(f"✅ 文件上传成功: {file_id}")
+                print(f"   状态: {file_response['metadata']['status']}")
             else:
                 error_text = await resp.text()
-                print(f"   ❌ 文件上传失败: {resp.status}, {error_text}")
-                await cleanup_collection(session, collection_id)
-                return False
+                print(f"❌ 文件上传失败: {resp.status}, {error_text}")
+                return
         
         # 4. 等待文档处理
         print("   ⏳ 等待文档处理...")
         processing_success = False
-        for i in range(60):  # 等待60秒
+        for i in range(600):  # 等待60秒
             await asyncio.sleep(1)
             
             async with session.get(f"{BASE_URL}/files/{file_id}") as resp:
@@ -221,30 +205,50 @@ async def test_full_pipeline():
         
         # 6. 测试搜索
         print("   🔍 测试搜索功能...")
-        search_data = {
-            "query": "测试文档",
-            "limit": 5
-        }
         
-        async with session.post(f"{BASE_URL}/collections/{collection_id}/search", json=search_data) as resp:
-            if resp.status == 200:
-                results = await resp.json()
-                print(f"   ✅ 搜索成功，找到 {len(results)} 个结果")
-                
-                if len(results) > 0:
-                    print(f"     第一个结果相似度: {results[0]['score']:.3f}")
-                    print(f"     内容片段: {results[0]['page_content'][:50]}...")
+        # 使用与文档内容相关的搜索查询
+        search_queries = [
+            "LangGraph",
+            "StateGraph", 
+            "chatbot",
+            "agent python",
+            "create react"
+        ]
+        
+        search_success = False
+        for query in search_queries:
+            print(f"     查询: '{query}'")
+            search_data = {
+                "query": query,
+                "limit": 5
+            }
+            
+            async with session.post(f"{BASE_URL}/collections/{collection_id}/search", json=search_data) as resp:
+                if resp.status == 200:
+                    results = await resp.json()
+                    print(f"     ✅ 找到 {len(results)} 个结果")
+                    
+                    if len(results) > 0:
+                        print(f"       最高相似度: {results[0]['score']:.3f}")
+                        print(f"       内容片段: {results[0]['page_content'][:60]}...")
+                        search_success = True
+                    else:
+                        print(f"       ⚠️ 查询 '{query}' 无结果")
                 else:
-                    print("   ⚠️ 警告：搜索无结果")
-            else:
-                error_text = await resp.text()
-                print(f"   ❌ 搜索失败: {resp.status}, {error_text}")
-                await cleanup_collection(session, collection_id)
-                return False
+                    error_text = await resp.text()
+                    print(f"     ❌ 搜索失败: {resp.status}, {error_text}")
+                    await cleanup_collection(session, collection_id)
+                    return False
+        
+        if not search_success:
+            print("   ❌ 所有搜索查询都无结果，向量搜索功能可能有问题")
+            await cleanup_collection(session, collection_id)
+            return False
+        else:
+            print("   ✅ 搜索功能正常")
         
         # 7. 清理
         await cleanup_collection(session, collection_id)
-        Path(test_file_path).unlink(missing_ok=True)
         
         return True
 

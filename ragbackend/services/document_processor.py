@@ -33,7 +33,7 @@ class DocumentProcessor:
             chunk_size=chunk_size,
             chunk_overlap=chunk_overlap,
             length_function=len,
-            separators=["\n\n", "\n", " ", ""]
+            separators=[]
         )
         self.minio_service = get_minio_service()
     

@@ -1,0 +1,423 @@
+TITLE: Complete Example: Trimming Messages in a LangGraph Agent (Python)
+DESCRIPTION: A comprehensive example demonstrating the integration of message trimming within a full LangGraph agent. It shows how to initialize a model, define a `call_model` node using `trim_messages`, and run a multi-turn conversation while managing the context window.
+SOURCE: https://github.com/langchain-ai/langgraph/blob/main/docs/docs/how-tos/memory.ipynb#_snippet_3
+
+LANGUAGE: python
+CODE:
+```
+from langchain_core.messages.utils import (
+    trim_messages,
+    count_tokens_approximately
+)
+from langchain.chat_models import init_chat_model
+from langgraph.graph import StateGraph, START, MessagesState
+
+model = init_chat_model("anthropic:claude-3-7-sonnet-latest")
+summarization_model = model.bind(max_tokens=128)
+
+def call_model(state: MessagesState):
+    messages = trim_messages(
+        state["messages"],
+        strategy="last",
+        token_counter=count_tokens_approximately,
+        max_tokens=128,
+        start_on="human",
+        end_on=("human", "tool"),
+    )
+    response = model.invoke(messages)
+    return {"messages": [response]}
+
+checkpointer = InMemorySaver()
+builder = StateGraph(MessagesState)
+builder.add_node(call_model)
+builder.add_edge(START, "call_model")
+graph = builder.compile(checkpointer=checkpointer)
+
+config = {"configurable": {"thread_id": "1"}}
+graph.invoke({"messages": "hi, my name is bob"}, config)
+graph.invoke({"messages": "write a short poem about cats"}, config)
+graph.invoke({"messages": "now do the same but for dogs"}, config)
+final_response = graph.invoke({"messages": "what's my name?"}, config)
+```
+
+----------------------------------------
+
+TITLE: Initialize LangChain Chat Model
+DESCRIPTION: This code initializes a LangChain chat model, specifically `gpt-4.1` from OpenAI, which is required for the agent's tool-calling capabilities. Any model supporting tool-calling can be used.
+SOURCE: https://github.com/langchain-ai/langgraph/blob/main/docs/docs/tutorials/sql-agent.ipynb#_snippet_1
+
+LANGUAGE: python
+CODE:
+```
+from langchain.chat_models import init_chat_model
+
+llm = init_chat_model("openai:gpt-4.1")
+```
+
+----------------------------------------
+
+TITLE: Creating a LangGraph Workflow with State and Nodes in Python
+DESCRIPTION: This snippet initializes a `StateGraph` for the chatbot, defining its state structure using `TypedDict` and `Annotated` for message management. It sets up a `MemorySaver` for checkpointing and adds two initial nodes, 'info' and 'prompt', which are assumed to be pre-defined chains (`info_chain`, `prompt_gen_chain`). It also defines an `add_tool_message` node as a function and connects all nodes with conditional and direct edges, then compiles the graph.
+SOURCE: https://github.com/langchain-ai/langgraph/blob/main/docs/docs/tutorials/chatbots/information-gather-prompting.ipynb#_snippet_6
+
+LANGUAGE: python
+CODE:
+```
+from langgraph.checkpoint.memory import MemorySaver
+from langgraph.graph import StateGraph, START
+from langgraph.graph.message import add_messages
+from typing import Annotated
+from typing_extensions import TypedDict
+
+
+class State(TypedDict):
+    messages: Annotated[list, add_messages]
+
+
+memory = MemorySaver()
+workflow = StateGraph(State)
+workflow.add_node("info", info_chain)
+workflow.add_node("prompt", prompt_gen_chain)
+
+
+@workflow.add_node
+def add_tool_message(state: State):
+    return {
+        "messages": [
+            ToolMessage(
+                content="Prompt generated!",
+                tool_call_id=state["messages"][-1].tool_calls[0]["id"],
+            )
+        ]
+    }
+
+
+workflow.add_conditional_edges("info", get_state, ["add_tool_message", "info", END])
+workflow.add_edge("add_tool_message", "prompt")
+workflow.add_edge("prompt", END)
+workflow.add_edge(START, "info")
+graph = workflow.compile(checkpointer=memory)
+```
+
+----------------------------------------
+
+TITLE: Extended LangGraph Example: Validating User Input with StateGraph
+DESCRIPTION: A comprehensive example illustrating how to build a LangGraph with a `StateGraph` and `MemorySaver` checkpointing. It includes a node (`get_valid_age`) that validates user input for age, ensuring it's a non-negative integer, and demonstrates how to handle invalid inputs and resume the graph using `Command`.
+SOURCE: https://github.com/langchain-ai/langgraph/blob/main/docs/docs/how-tos/human_in_the_loop/add-human-in-the-loop.md#_snippet_11
+
+LANGUAGE: python
+CODE:
+```
+from typing import TypedDict
+import uuid
+
+from langgraph.constants import START, END
+from langgraph.graph import StateGraph
+from langgraph.types import interrupt, Command
+from langgraph.checkpoint.memory import MemorySaver
+
+# Define graph state
+class State(TypedDict):
+    age: int
+
+# Node that asks for human input and validates it
+def get_valid_age(state: State) -> State:
+    prompt = "Please enter your age (must be a non-negative integer)."
+
+    while True:
+        user_input = interrupt(prompt)
+
+        # Validate the input
+        try:
+            age = int(user_input)
+            if age < 0:
+                raise ValueError("Age must be non-negative.")
+            break  # Valid input received
+        except (ValueError, TypeError):
+            prompt = f"'{user_input}' is not valid. Please enter a non-negative integer for age."
+
+    return {"age": age}
+
+# Node that uses the valid input
+def report_age(state: State) -> State:
+    print(f"✅ Human is {state['age']} years old.")
+    return state
+
+# Build the graph
+builder = StateGraph(State)
+builder.add_node("get_valid_age", get_valid_age)
+builder.add_node("report_age", report_age)
+
+builder.set_entry_point("get_valid_age")
+builder.add_edge("get_valid_age", "report_age")
+builder.add_edge("report_age", END)
+
+# Create the graph with a memory checkpointer
+checkpointer = MemorySaver()
+graph = builder.compile(checkpointer=checkpointer)
+
+# Run the graph until the first interrupt
+config = {"configurable": {"thread_id": uuid.uuid4()}}
+result = graph.invoke({}, config=config)
+print(result["__interrupt__"])  # First prompt: "Please enter your age..."
+
+# Simulate an invalid input (e.g., string instead of integer)
+result = graph.invoke(Command(resume="not a number"), config=config)
+print(result["__interrupt__"])  # Follow-up prompt with validation message
+
+# Simulate a second invalid input (e.g., negative number)
+result = graph.invoke(Command(resume="-10"), config=config)
+print(result["__interrupt__"])  # Another retry
+
+# Provide valid input
+final_result = graph.invoke(Command(resume="25"), config=config)
+print(final_result)  # Should include the valid age
+```
+
+----------------------------------------
+
+TITLE: Example: Updating LangGraph State with Tools in a React Agent
+DESCRIPTION: This comprehensive example demonstrates how to use a tool (`update_user_info`) that returns a `Command` to update the graph state, and then another tool (`greet`) that accesses the newly updated state. It shows the full flow within a `create_react_agent`.
+SOURCE: https://github.com/langchain-ai/langgraph/blob/main/docs/docs/how-tos/tool-calling.ipynb#_snippet_9
+
+LANGUAGE: python
+CODE:
+```
+from typing import Annotated
+from langchain_core.tools import tool, InjectedToolCallId
+from langchain_core.runnables import RunnableConfig
+from langchain_core.messages import ToolMessage
+from langgraph.prebuilt import InjectedState, create_react_agent
+from langgraph.prebuilt.chat_agent_executor import AgentState
+from langgraph.types import Command
+
+class CustomState(AgentState):
+    user_name: str
+
+@tool
+def update_user_info(
+    tool_call_id: Annotated[str, InjectedToolCallId],
+    config: RunnableConfig
+) -> Command:
+    """Look up and update user info."""
+    user_id = config["configurable"].get("user_id")
+    name = "John Smith" if user_id == "user_123" else "Unknown user"
+    return Command(update={
+        "user_name": name,
+        "messages": [
+            ToolMessage(
+                "Successfully looked up user information",
+                tool_call_id=tool_call_id
+            )
+        ]
+    })
+
+def greet(
+    state: Annotated[CustomState, InjectedState]
+) -> str:
+    """Use this to greet the user once you found their info."""
+    user_name = state["user_name"]
+    return f"Hello {user_name}!"
+
+agent = create_react_agent(
+    model="anthropic:claude-3-7-sonnet-latest",
+    tools=[get_user_info, greet],
+    state_schema=CustomState
+)
+
+agent.invoke(
+    {"messages": [{"role": "user", "content": "greet the user"}]},
+    config={"configurable": {"user_id": "user_123"}}
+)
+```
+
+----------------------------------------
+
+TITLE: Defining and Using Mutable State for Short-Term Memory in LangGraph Python
+DESCRIPTION: This example illustrates how to define and utilize mutable state within a LangGraph agent for short-term memory. A `CustomState` class, inheriting from `AgentState`, is used to define dynamic data fields like `user_name`. This state schema is then passed to `create_react_agent`, allowing the agent to manage and evolve data during a single run, such as values derived from tool outputs or LLM interactions.
+SOURCE: https://github.com/langchain-ai/langgraph/blob/main/docs/docs/agents/context.md#_snippet_1
+
+LANGUAGE: Python
+CODE:
+```
+class CustomState(AgentState):
+    # highlight-next-line
+    user_name: str
+
+agent = create_react_agent(
+    # Other agent parameters...
+    # highlight-next-line
+    state_schema=CustomState,
+)
+
+agent.invoke({
+    "messages": "hi!",
+    "user_name": "Jane"
+})
+```
+
+----------------------------------------
+
+TITLE: LangGraph Multi-Agent Conversational Workflow Definition
+DESCRIPTION: This Python code defines a multi-agent conversational workflow using LangGraph's functional API. It sets up a `travel_advisor` agent with a tool for transferring to a `hotel_advisor`, wraps agent invocation in a `@task` decorated function, and orchestrates the multi-turn conversation within an `@entrypoint` workflow. The workflow handles user input via `interrupt` and dynamically routes between agents based on tool calls or user input.
+SOURCE: https://github.com/langchain-ai/langgraph/blob/main/docs/docs/how-tos/multi-agent-multi-turn-convo-functional.ipynb#_snippet_0
+
+LANGUAGE: python
+CODE:
+```
+from langgraph.func import entrypoint, task
+from langgraph.prebuilt import create_react_agent
+from langchain_core.tools import tool
+from langgraph.types import interrupt
+
+
+# Define a tool to signal intent to hand off to a different agent
+# Note: this is not using Command(goto) syntax for navigating to different agents:
+# `workflow()` below handles the handoffs explicitly
+@tool(return_direct=True)
+def transfer_to_hotel_advisor():
+    """Ask hotel advisor agent for help."""
+    return "Successfully transferred to hotel advisor"
+
+
+# define an agent
+travel_advisor_tools = [transfer_to_hotel_advisor, ...]
+travel_advisor = create_react_agent(model, travel_advisor_tools)
+
+
+# define a task that calls an agent
+@task
+def call_travel_advisor(messages):
+    response = travel_advisor.invoke({"messages": messages})
+    return response["messages"]
+
+
+# define the multi-agent network workflow
+@entrypoint(checkpointer)
+def workflow(messages):
+    call_active_agent = call_travel_advisor
+    while True:
+        agent_messages = call_active_agent(messages).result()
+        ai_msg = get_last_ai_msg(agent_messages)
+        if not ai_msg.tool_calls:
+            user_input = interrupt(value="Ready for user input.")
+            messages = messages + [{"role": "user", "content": user_input}]
+            continue
+
+        messages = messages + agent_messages
+        call_active_agent = get_next_agent(messages)
+    return entrypoint.final(value=agent_messages[-1], save=messages)
+```
+
+----------------------------------------
+
+TITLE: Create and Run a Basic LangGraph Agent
+DESCRIPTION: This Python snippet demonstrates how to initialize a reactive agent using LangGraph's prebuilt components. It defines a simple tool (`get_weather`) and shows how to configure the agent with a model and tools, then invoke it with a user message to get a response. Note: Requires `langchain[anthropic]` for the model.
+SOURCE: https://github.com/langchain-ai/langgraph/blob/main/README.md#_snippet_1
+
+LANGUAGE: python
+CODE:
+```
+# pip install -qU "langchain[anthropic]" to call the model
+
+from langgraph.prebuilt import create_react_agent
+
+def get_weather(city: str) -> str:
+    """Get weather for a given city."""
+    return "It's always sunny in {city}!"
+
+agent = create_react_agent(
+    model="anthropic:claude-3-7-sonnet-latest",
+    tools=[get_weather],
+    prompt="You are a helpful assistant"
+)
+
+# Run the agent
+agent.invoke(
+    {"messages": [{"role": "user", "content": "what is the weather in sf"}]}
+)
+```
+
+----------------------------------------
+
+TITLE: LangGraph Auth Handler for User-Scoped Resource Ownership
+DESCRIPTION: This `@auth.on` handler enforces user-scoped access control across various LangGraph resources like threads and assistants. It adds the current user's identity to the resource's metadata during creation or update, ensuring persistence. Additionally, it returns a filter dictionary that restricts all subsequent operations (read, update, search) to only resources owned by the requesting user.
+SOURCE: https://github.com/langchain-ai/langgraph/blob/main/docs/docs/concepts/auth.md#_snippet_3
+
+LANGUAGE: Python
+CODE:
+```
+@auth.on
+async def add_owner(
+    ctx: Auth.types.AuthContext,
+    value: dict  # The payload being sent to this access method
+) -> dict:  # Returns a filter dict that restricts access to resources
+    """Authorize all access to threads, runs, crons, and assistants.
+
+    This handler does two things:
+        - Adds a value to resource metadata (to persist with the resource so it can be filtered later)
+        - Returns a filter (to restrict access to existing resources)
+
+    Args:
+        ctx: Authentication context containing user info, permissions, the path, and
+        value: The request payload sent to the endpoint. For creation
+              operations, this contains the resource parameters. For read
+              operations, this contains the resource being accessed.
+
+    Returns:
+        A filter dictionary that LangGraph uses to restrict access to resources.
+        See [Filter Operations](#filter-operations) for supported operators.
+    """
+    # Create filter to restrict access to just this user's resources
+    filters = {"owner": ctx.user.identity}
+
+    # Get or create the metadata dictionary in the payload
+    # This is where we store persistent info about the resource
+    metadata = value.setdefault("metadata", {})
+
+    # Add owner to metadata - if this is a create or update operation,
+    # this information will be saved with the resource
+    # So we can filter by it later in read operations
+    metadata.update(filters)
+
+    # Return filters to restrict access
+    # These filters are applied to ALL operations (create, read, update, search, etc.)
+    # to ensure users can only access their own resources
+    return filters
+```
+
+----------------------------------------
+
+TITLE: Define a simple LangGraph StateGraph for state management
+DESCRIPTION: This Python code defines a basic `StateGraph` with a `TypedDict` state. It includes two nodes, `refine_topic` and `generate_joke`, and sets up the execution flow with edges from `START` to `END`.
+SOURCE: https://github.com/langchain-ai/langgraph/blob/main/docs/docs/how-tos/streaming.md#_snippet_4
+
+LANGUAGE: python
+CODE:
+```
+from typing import TypedDict
+from langgraph.graph import StateGraph, START, END
+
+
+class State(TypedDict):
+  topic: str
+  joke: str
+
+
+def refine_topic(state: State):
+    return {"topic": state["topic"] + " and cats"}
+
+
+def generate_joke(state: State):
+    return {"joke": f"This is a joke about {state['topic']}"}
+
+graph = (
+  StateGraph(State)
+  .add_node(refine_topic)
+  .add_node(generate_joke)
+  .add_edge(START, "refine_topic")
+  .add_edge("refine_topic", "generate_joke")
+  .add_edge("generate_joke", END)
+  .compile()
+)
+```
