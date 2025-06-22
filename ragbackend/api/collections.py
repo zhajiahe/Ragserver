@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-@router.post("", response_model=CollectionResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=CollectionResponse, status_code=status.HTTP_201_CREATED, tags=["collections"])
 async def create_collection(collection_data: CollectionCreate):
     """Create a new collection."""
     try:
@@ -53,7 +53,7 @@ async def get_collections():
         )
 
 
-@router.get("/{collection_id}", response_model=CollectionResponse)
+@router.get("/{collection_id}", response_model=CollectionResponse, tags=["collections"])
 async def get_collection(collection_id: str):
     """Get collection by ID."""
     try:
@@ -99,7 +99,7 @@ async def update_collection(collection_id: str, collection_data: CollectionUpdat
         )
 
 
-@router.delete("/{collection_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{collection_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["collections"])
 async def delete_collection(collection_id: str):
     """Delete collection."""
     try:

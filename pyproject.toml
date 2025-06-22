@@ -33,6 +33,7 @@ dependencies = [
     "email-validator>=2.2.0",
     "greenlet>=3.2.3",
     "langchain-ollama>=0.3.3",
+    "pgvector>=0.3.6",
 ]
 
 [project.packages]
