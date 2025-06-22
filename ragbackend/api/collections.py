@@ -25,7 +25,8 @@ async def create_collection(collection_data: CollectionCreate):
         collection = await db_collections.create_collection(
             name=collection_data.name,
             description=collection_data.description,
-            embedding_model=collection_data.embedding_model
+            embedding_model=collection_data.embedding_model,
+            embedding_provider=collection_data.embedding_provider
         )
         return CollectionResponse(**collection)
     except Exception as e:

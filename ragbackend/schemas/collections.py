@@ -9,6 +9,7 @@ class CollectionCreate(BaseModel):
     description: Optional[str] = Field(None, description="Collection description")
     embedding_model: str = Field("bge-m3", description="Embedding model to use")
     embedding_provider: str = Field("ollama", description="Embedding provider to use")
+    
 
 
 class CollectionUpdate(BaseModel):
@@ -21,6 +22,7 @@ class CollectionResponse(BaseModel):
     name: str
     description: Optional[str]
     embedding_model: str
+    embedding_provider: str
     created_at: str
     updated_at: str
 

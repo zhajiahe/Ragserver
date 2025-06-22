@@ -14,16 +14,17 @@ logger = logging.getLogger(__name__)
 async def create_collection(
     name: str, 
     description: Optional[str] = None,
-    embedding_model: str = "ollama"
+    embedding_model: str = "bge-m3",
+    embedding_provider: str = "ollama"
 ) -> Dict[str, Any]:
     """Create a new collection."""
     async with get_db_connection() as conn:
         # Insert collection
         row = await conn.fetchrow("""
-            INSERT INTO collections (name, description, embedding_model)
-            VALUES ($1, $2, $3)
-            RETURNING id, name, description, embedding_model, created_at, updated_at
-        """, name, description, embedding_model)
+            INSERT INTO collections (name, description, embedding_model, embedding_provider)
+            VALUES ($1, $2, $3, $4)
+            RETURNING id, name, description, embedding_model, embedding_provider, created_at, updated_at
+        """, name, description, embedding_model, embedding_provider)
         
         collection_id = row['id']
         
@@ -147,6 +148,7 @@ async def update_collection(
             'name': row['name'],
             'description': row['description'],
             'embedding_model': row['embedding_model'],
+            'embedding_provider': row['embedding_provider'],
             'created_at': row['created_at'].isoformat(),
             'updated_at': row['updated_at'].isoformat()
         }
