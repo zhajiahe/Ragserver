@@ -1,5 +1,5 @@
 # RagBackend
-
+[中文](./README_zh.md)
 RagBackend is a RAG (Retrieval-Augmented Generation) service built with FastAPI that provides a REST API for managing collections and documents, using PostgreSQL with pgvector for vector storage.
 
 ## TODO
