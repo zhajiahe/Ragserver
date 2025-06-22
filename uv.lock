@@ -1,6 +1,6 @@
 version = 1
 revision = 1
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 resolution-markers = [
     "python_full_version >= '3.13'",
     "python_full_version >= '3.12.4' and python_full_version < '3.13'",
@@ -2168,7 +2168,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "aiohttp", specifier = ">=3.11.13" },
+    { name = "aiohttp", specifier = ">=3.12.13" },
     { name = "asyncpg", specifier = ">=0.30.0" },
     { name = "bcrypt", specifier = ">=4.0.1" },
     { name = "beautifulsoup4", specifier = ">=4.12.3" },
