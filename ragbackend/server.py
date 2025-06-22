@@ -15,6 +15,7 @@ from ragbackend.config import (
 from ragbackend.database.connection import init_db_pool, close_db_pool, init_database_tables
 from ragbackend.services.minio_service import initialize_minio_service
 from ragbackend.api.collections import router as collections_router
+from ragbackend.api.files import router as files_router
 
 logger = logging.getLogger(__name__)
 
@@ -79,7 +80,8 @@ async def health_check():
         "version": APP_VERSION
     }
 
-# Include routers
+# Include routers - 注意：collections路由已经包含了文件上传和搜索功能
 APP.include_router(collections_router, tags=["Collections"])
+APP.include_router(files_router, tags=["Files"])
 
 logger.info(f"FastAPI application configured: {APP_NAME} v{APP_VERSION}")

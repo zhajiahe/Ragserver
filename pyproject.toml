@@ -1,6 +1,6 @@
 [project]
 name = "ragbackend"
-version = "0.0.1"
+version = "0.1.0"
 description = "Ragbacjend: A RAG service"
 readme = "README.md"
 requires-python = ">=3.12"

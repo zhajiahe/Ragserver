@@ -1,22 +1,32 @@
 # RagBackend
 [中文](./README_zh.md)
 
+
 RagBackend is a RAG (Retrieval-Augmented Generation) service built with FastAPI that provides a REST API for managing collections and documents, using PostgreSQL with pgvector for vector storage.
 
-## 🔒 Latest Security Updates (v0.0.2 - 2025-06-22)
+## 🔒 Latest Updates (v0.1.0 - 2025-01-23)
 
-### Security Fixes
+### 🚀 Phase 2 Complete - Core RAG Functionality
+- **File Upload API**: Multi-format document upload with MinIO integration
+- **Document Processing**: Automatic parsing, chunking, and vectorization
+- **Vector Search**: Semantic similarity search with metadata filtering
+- **Async Processing**: Background document processing pipeline
+- **Comprehensive APIs**: Full CRUD operations for files and search
+
+### Previous Updates (v0.0.2 - 2025-06-22)
+
+#### Security Fixes
 - **Fixed SQL Injection Vulnerabilities**: Added comprehensive UUID validation for all database operations
 - **Secure Table Name Generation**: Implemented safe table name validation to prevent injection attacks
 - **Enhanced Input Validation**: Added parameter validation and type checking across all endpoints
 
-### Bug Fixes
+#### Bug Fixes
 - **Database Schema Consistency**: Fixed missing `embedding_provider` field in collections table
 - **API Response Consistency**: Unified response fields across all endpoints to include `embedding_provider`
 - **HTTP 204 Response Fix**: Corrected delete endpoint response format
 - **Route Registration Fix**: Resolved duplicate prefix issues in API routing
 
-### Code Quality Improvements
+#### Code Quality Improvements
 - **Dependency Injection Pattern**: Refactored global variables to `DatabaseManager` class
 - **Better Architecture**: Improved connection pool management and encapsulation
 - **Backward Compatibility**: Maintained compatibility with existing code through legacy functions
@@ -29,26 +39,26 @@ RagBackend is a RAG (Retrieval-Augmented Generation) service built with FastAPI 
 - [x] Implement basic FastAPI application and server setup (`server.py`)
 - [x] Implement health check API
 
-### Phase 2: Core Features
+### Phase 2: Core Features ✅
 - [x] Implement collection management API and database operations
-- [ ] Implement file upload API with MinIO integration
-- [ ] Implement document processing service (parsing, chunking, vectorization)
-- [ ] Implement vector search functionality
+- [x] Implement file upload API with MinIO integration
+- [x] Implement document processing service (parsing, chunking, vectorization)
+- [x] Implement vector search functionality
 
 ### Phase 3: Enhancement
-- [ ] Error handling and logging
-- [ ] Asynchronous task processing for document processing
-- [ ] API documentation and testing
-- [ ] Performance optimization
+- [ ] Error handling and logging enhancement
+- [ ] Advanced asynchronous task processing
+- [ ] Comprehensive API documentation and testing
+- [ ] Performance optimization and caching
 
 ### Supported Features
-- [x] Multiple document formats (TXT, PDF, MD, DOCX, etc.)
+- [x] Multiple document formats (TXT, PDF, MD, DOCX, HTML, etc.)
 - [x] Multiple embedding models:
   - [x] Ollama (local deployment)
   - [x] OpenAI API
   - [x] SiliconFlow (free API)
 - [x] Dynamic vector table creation per collection
-- [ ] Asynchronous document processing
+- [x] Asynchronous document processing
 - [x] Container deployment with Docker Compose
 
 ## Features

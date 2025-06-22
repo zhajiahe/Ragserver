@@ -1,1 +1,1 @@
-uv run uvicorn ragbackend.main:APP --host 0.0.0.0 --port 8080
+uv run uvicorn ragbackend.main:APP --host 0.0.0.0 --port 8080 --reload

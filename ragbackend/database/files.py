@@ -128,6 +128,35 @@ async def update_file_status(file_id: str, status: str) -> Optional[Dict[str, An
         }
 
 
+async def update_file_info(file_id: str, size: int, object_path: str) -> Optional[Dict[str, Any]]:
+    """Update file size and object path."""
+    # Validate UUID format
+    uuid_obj = validate_uuid(file_id)
+    
+    async with get_db_connection() as conn:
+        row = await conn.fetchrow("""
+            UPDATE files 
+            SET size = $1, object_path = $2, updated_at = NOW()
+            WHERE id = $3
+            RETURNING id, collection_id, filename, content_type, size, object_path, status, created_at, updated_at
+        """, size, object_path, uuid_obj)
+        
+        if not row:
+            return None
+            
+        return {
+            'id': str(row['id']),
+            'collection_id': str(row['collection_id']),
+            'filename': row['filename'],
+            'content_type': row['content_type'],
+            'size': row['size'],
+            'object_path': row['object_path'],
+            'status': row['status'],
+            'created_at': row['created_at'].isoformat(),
+            'updated_at': row['updated_at'].isoformat()
+        }
+
+
 async def delete_file(file_id: str) -> bool:
     """Delete file record."""
     # Validate UUID format

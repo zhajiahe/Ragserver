@@ -6,6 +6,35 @@
 
 ## [未发布]
 
+## [0.1.0] - 2025-01-23
+
+### ✨ 新增功能
+- 实现文件上传API：支持PDF、Word、文本、Markdown、HTML等多种格式
+- 完成文档处理服务：文档解析、智能分块、向量化处理
+- 实现向量搜索功能：基于语义相似度的文档检索
+- 支持异步文档处理：上传后后台自动处理和索引
+- 添加文件状态跟踪：uploading → processing → completed/failed
+- 实现集合统计信息API：向量数量、文件数量等统计
+
+### 🔧 技术改进
+- 创建嵌入服务抽象层：支持动态切换Ollama、OpenAI、SiliconFlow
+- 实现智能文档分块：使用RecursiveCharacterTextSplitter
+- 添加向量数据库操作：批量插入、相似度搜索、元数据过滤
+- 实现文档格式识别和解析：基于langchain的多格式支持
+- 添加文件验证和大小限制：防止无效文件上传
+
+### 📋 API扩展
+- POST /collections/{id}/files - 文件上传
+- GET /collections/{id}/files - 文件列表
+- POST /collections/{id}/search - 向量搜索
+- GET /collections/{id}/stats - 集合统计
+- GET /files/{id} - 文件详情
+- DELETE /files/{id} - 文件删除
+
+### 🧪 测试
+- 添加端到端测试脚本：完整的RAG流程测试
+- 实现自动化功能验证：上传、处理、搜索全流程
+
 ## [0.0.2] - 2025-06-22
 
 ### 🔒 安全修复
