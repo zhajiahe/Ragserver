@@ -5,16 +5,10 @@ from fastapi import FastAPI
 from sqlalchemy import create_engine
 from sqladmin import Admin
 
-try:
-    from scalar_fastapi import get_scalar_api_reference  # type: ignore
-except Exception:  # pragma: no cover - optional dependency
-    get_scalar_api_reference = None  # type: ignore
+from scalar_fastapi import get_scalar_api_reference
 
-try:
-    # fastapi-rader is optional; attempt both helper and middleware styles
-    from fastapi_rader import Rader as FastapiRader  # type: ignore
-except Exception:  # pragma: no cover - optional dependency
-    FastapiRader = None  # type: ignore
+from fastapi_rader import Rader as FastapiRader, RaderMiddleware  # type: ignore
+
 
 from ragserver.app.models import Base
 from ragserver.app.utils.sql_admin import setup_admin
@@ -43,28 +37,15 @@ app = FastAPI(
 
 
 # Scalar API Reference at /docs (disable default docs above)
-if get_scalar_api_reference is not None:
-    app.mount(
-        "/docs",
-        get_scalar_api_reference(
-            openapi_url="/openapi.json",
-            title=os.getenv("APP_TITLE", "Ragserver API"),
-        ),
-    )
-
-
-# Optional fastapi-rader integration
-if FastapiRader is not None:
-    try:
-        FastapiRader(app)  # type: ignore
-    except Exception:
-        try:
-            from fastapi_rader import RaderMiddleware  # type: ignore
-
-            app.add_middleware(RaderMiddleware)
-        except Exception:
-            pass
-
+app.mount(
+    "/docs",
+    get_scalar_api_reference(
+        openapi_url="/openapi.json",
+        title=os.getenv("APP_TITLE", "Ragserver API"),
+    ),
+)
+FastapiRader(app)
+app.add_middleware(RaderMiddleware())
 
 # SQLAdmin setup
 admin = setup_admin(app, engine)

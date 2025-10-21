@@ -11,11 +11,7 @@ from sqlalchemy import (
     Float, JSON, Index, UniqueConstraint, ForeignKey, UUID as PGUUID
 )
 from sqlalchemy.dialects.postgresql import JSONB
-try:
-    # pgvector SQLAlchemy type
-    from pgvector.sqlalchemy import Vector  # type: ignore
-except Exception:  # pragma: no cover - optional at import time
-    Vector = None  # type: ignore
+from pgvector.sqlalchemy import Vector
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 import uuid
@@ -57,7 +53,6 @@ class User(Base, TimeMixin):
     # 关联关系
     knowledge_bases = relationship("KnowledgeBase", back_populates="user")
     documents = relationship("Document", back_populates="uploader")
-    chunking_strategies = relationship("ChunkingStrategy", back_populates="user")
     api_keys = relationship("APIKey", back_populates="user")
     document_chunks = relationship("DocumentChunk", back_populates="user")
     api_usage_logs = relationship("APIUsageLog", back_populates="user")
@@ -131,15 +126,14 @@ class Document(Base, TimeMixin):
     # 元数据
     metadata = Column(JSONB, default=dict)
 
-    # 分块信息
-    chunking_strategy_id = Column(PGUUID(as_uuid=True), ForeignKey("chunking_strategies.id"))
+    # 分块配置（可选，默认使用知识库配置）
+    chunking_config = Column(JSONB)
     chunk_count = Column(Integer, default=0)
 
     # 关联关系
     knowledge_base = relationship("KnowledgeBase", back_populates="documents")
     uploader = relationship("User", back_populates="documents")
     chunks = relationship("DocumentChunk", back_populates="document")
-    chunking_strategy = relationship("ChunkingStrategy", back_populates="documents")
 
     __table_args__ = (
         Index('idx_doc_kb', 'knowledge_base_id'),
@@ -166,22 +160,21 @@ class DocumentChunk(Base, TimeMixin):
     content = Column(Text, nullable=False)
     content_hash = Column(String(64), nullable=False)  # SHA256 for deduplication
     chunk_index = Column(Integer, nullable=False)  # 0-based index in document
-
+    summary = Column(Text) # 块的摘要
     # 向量数据（需 PostgreSQL + pgvector 扩展）
-    embedding = Column(Vector(1536)) if Vector else Column(String(0))
-    embedding_model = Column(String(50), default="qwen-embedding-v2")
+    content_embedding = Column(Vector(1024))  # bge-m3: 1024维
+    summary_embedding = Column(Vector(1024))
+    embedding_model = Column(String(50), default="BAAI/bge-m3")
 
     # 元数据
     metadata = Column(JSONB, default=dict)
 
     # 关联信息
-    chunking_strategy_id = Column(PGUUID(as_uuid=True), ForeignKey("chunking_strategies.id"))
     parent_chunk_id = Column(PGUUID(as_uuid=True), ForeignKey("document_chunks.id"))  # for hierarchical chunking
 
     # 关联关系
     document = relationship("Document", back_populates="chunks")
     knowledge_base = relationship("KnowledgeBase", back_populates="chunks")
-    chunking_strategy = relationship("ChunkingStrategy", back_populates="chunks")
     parent_chunk = relationship("DocumentChunk", remote_side=[id])
     user = relationship("User", back_populates="document_chunks")
 
@@ -197,49 +190,6 @@ class DocumentChunk(Base, TimeMixin):
 
     def __repr__(self):
         return f"<DocumentChunk(id={self.id}, document_id={self.document_id}, index={self.chunk_index})>"
-
-
-class ChunkingStrategy(Base, TimeMixin):
-    """分块策略模型"""
-    __tablename__ = "chunking_strategies"
-
-    id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id = Column(PGUUID(as_uuid=True), ForeignKey("users.id"))  # null for system presets
-
-    # 基本信息
-    name = Column(String(100), nullable=False)
-    description = Column(String(500))
-
-    # 状态信息
-    is_system = Column(Boolean, default=False, nullable=False)  # system preset or user created
-
-    # 策略配置
-    strategy_type = Column(String(50), nullable=False)  # fixed/paragraph/semantic/sliding_window/custom
-    config = Column(JSONB, nullable=False)  # specific configuration parameters
-
-    # 自然语言定义（创新功能）
-    nl_description = Column(Text)  # 自然语言描述
-    generated_config = Column(JSONB)  # LLM生成的配置
-    llm_provider = Column(String(50))  # qwen/gpt4/claude/wenxin
-    generation_reasoning = Column(Text)  # LLM的推理过程
-
-    # 使用统计
-    usage_count = Column(Integer, default=0)
-    last_used_at = Column(DateTime, default=datetime.utcnow)
-
-    # 关联关系
-    user = relationship("User", back_populates="chunking_strategies")
-    documents = relationship("Document", back_populates="chunking_strategy")
-    chunks = relationship("DocumentChunk", back_populates="chunking_strategy")
-
-    __table_args__ = (
-        Index('idx_cs_user', 'user_id'),
-        Index('idx_cs_system', 'is_system'),
-        Index('idx_cs_type', 'strategy_type'),
-    )
-
-    def __repr__(self):
-        return f"<ChunkingStrategy(id={self.id}, name={self.name}, type={self.strategy_type})>"
 
 
 class APIKey(Base, TimeMixin):
