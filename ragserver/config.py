@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     # ==================== 应用基础配置 ====================
     app_name: str = Field(default="RAG Knowledge Base Server", description="应用名称")
     app_version: str = Field(default="1.0.0", description="应用版本")
-    debug: bool = Field(default=False, description="调试模式")
+    debug: bool = Field(default=True, description="调试模式")
     log_level: str = Field(default="INFO", description="日志级别")
     
     # ==================== 数据库配置 ====================
@@ -93,7 +93,9 @@ class Settings(BaseSettings):
         return f"redis://{self.redis_host}:{self.redis_port}/2"
     
     # ==================== MinIO 对象存储配置 ====================
-    minio_endpoint: str = Field(default="localhost:9000", description="MinIO 端点")
+    minio_host: str = Field(default="localhost", description="MinIO 主机")
+    minio_port: int = Field(default=9000, description="MinIO 端口")
+    minio_console_port: int = Field(default=9001, description="MinIO 控制台端口")
     minio_access_key: str = Field(default="ragserver", description="MinIO Access Key")
     minio_secret_key: str = Field(default="ragserver_minio_password", description="MinIO Secret Key")
     minio_secure: bool = Field(default=False, description="是否使用 HTTPS")
@@ -152,41 +154,25 @@ class Settings(BaseSettings):
         """最大文件大小（字节）"""
         return self.max_file_size_mb * 1024 * 1024
     
-    # ==================== Embedding API 配置 ====================
-    # 默认使用本地 Embedding 模型
+    # ==================== SiliconFlow API 配置 ====================
+    siliconflow_api_key: str = Field(description="硅基流动 API Key")
+    siliconflow_api_base: str = Field(
+        default="https://api.siliconflow.cn/v1",
+        description="硅基流动 API Base URL"
+    )
+
+    # ==================== Embedding 配置 ====================
     default_embedding_model: str = Field(default="BAAI/bge-m3", description="默认 Embedding 模型")
     embedding_dimension: int = Field(default=1024, description="Embedding 向量维度（bge-m3: 1024维）")
-    embedding_device: str = Field(default="cuda", description="Embedding 模型运行设备（cuda/cpu）")
-    
-    # Qwen Embedding API（可选，作为备选）
-    qwen_api_key: Optional[str] = Field(default=None, description="通义千问 API Key")
-    qwen_api_base: str = Field(
-        default="https://dashscope.aliyuncs.com/compatible-mode/v1",
-        description="通义千问 API Base URL"
-    )
-    qwen_embedding_model: str = Field(default="text-embedding-v3", description="Qwen Embedding 模型")
-    qwen_embedding_dimension: int = Field(default=1536, description="Qwen Embedding 向量维度")
-    
-    # OpenAI (可选)
-    openai_api_key: Optional[str] = Field(default=None, description="OpenAI API Key")
-    openai_api_base: Optional[str] = Field(default=None, description="OpenAI API Base URL")
-    openai_embedding_model: str = Field(default="text-embedding-3-small", description="OpenAI Embedding 模型")
     
     # ==================== LLM 配置 ====================
     # 用于自然语言生成分块策略
-    default_llm_provider: str = Field(default="qwen", description="默认 LLM 提供商")
-    
-    # Qwen LLM
-    qwen_llm_model: str = Field(default="qwen-plus", description="通义千问 LLM 模型")
-    qwen_llm_temperature: float = Field(default=0.7, description="LLM 温度")
-    qwen_llm_max_tokens: int = Field(default=2000, description="LLM 最大 Token 数")
-    
-    # OpenAI LLM (可选)
-    openai_llm_model: str = Field(default="gpt-4o-mini", description="OpenAI LLM 模型")
-    
-    # Anthropic Claude (可选)
-    anthropic_api_key: Optional[str] = Field(default=None, description="Anthropic API Key")
-    anthropic_llm_model: str = Field(default="claude-3-5-sonnet-20241022", description="Claude 模型")
+    default_llm_provider: str = Field(default="siliconflow", description="默认 LLM 提供商")
+
+    # SiliconFlow LLM
+    siliconflow_llm_model: str = Field(default="Qwen/Qwen3-8B", description="硅基流动 LLM 模型")
+    siliconflow_llm_temperature: float = Field(default=0.7, description="LLM 温度")
+    siliconflow_llm_max_tokens: int = Field(default=2000, description="LLM 最大 Token 数")
     
     # ==================== 向量搜索配置 ====================
     # pgvector 索引配置
@@ -227,7 +213,8 @@ class Settings(BaseSettings):
     
     # ==================== 监控配置 ====================
     prometheus_enabled: bool = Field(default=True, description="是否启用 Prometheus")
-    prometheus_port: int = Field(default=9090, description="Prometheus 端口")
+    prometheus_port: int = Field(default=19090, description="Prometheus 端口")
+    grafana_port: int = Field(default=13000, description="Grafana 端口")
     
     # ==================== 日志配置 ====================
     log_format: str = Field(
@@ -302,35 +289,35 @@ settings = Settings()
 def validate_settings() -> None:
     """验证配置的有效性"""
     errors = []
-    
-    # 验证必需的 API Key
-    if not settings.qwen_api_key:
-        errors.append("QWEN_API_KEY 未设置，Embedding 功能将无法使用")
-    
+
+    # 验证硅基流动 API Key
+    if not settings.siliconflow_api_key:
+        errors.append("SILICONFLOW_API_KEY 未设置，Embedding 和 LLM 功能将无法使用")
+
     # 验证数据库配置
     if not settings.postgres_host:
         errors.append("POSTGRES_HOST 未设置")
-    
+
     # 验证 Redis 配置
     if not settings.redis_host:
         errors.append("REDIS_HOST 未设置")
-    
+
     # 验证 MinIO 配置
-    if not settings.minio_endpoint:
-        errors.append("MINIO_ENDPOINT 未设置")
-    
+    if not settings.minio_host:
+        errors.append("MINIO_HOST 未设置")
+
     # 验证向量索引类型
     if settings.vector_index_type not in ["hnsw", "ivfflat"]:
         errors.append(f"VECTOR_INDEX_TYPE 必须是 'hnsw' 或 'ivfflat'，当前值: {settings.vector_index_type}")
-    
+
     # 验证搜索类型
     if settings.default_search_type not in ["vector", "fulltext", "hybrid"]:
         errors.append(f"DEFAULT_SEARCH_TYPE 必须是 'vector'、'fulltext' 或 'hybrid'，当前值: {settings.default_search_type}")
-    
+
     # 验证 LLM 提供商
-    if settings.default_llm_provider not in ["qwen", "openai", "anthropic"]:
-        errors.append(f"DEFAULT_LLM_PROVIDER 必须是 'qwen'、'openai' 或 'anthropic'，当前值: {settings.default_llm_provider}")
-    
+    if settings.default_llm_provider not in ["siliconflow"]:
+        errors.append(f"DEFAULT_LLM_PROVIDER 必须是 'siliconflow'，当前值: {settings.default_llm_provider}")
+
     # 打印警告
     if errors:
         import warnings

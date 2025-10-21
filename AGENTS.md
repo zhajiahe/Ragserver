@@ -47,7 +47,7 @@ ragserver/
 
 ### 核心实体
 
-参考 `ER_SIMPLE.md` 了解完整的数据模型。关键实体：
+参考 `ER.md` 了解完整的数据模型。关键实体：
 
 1. **User** - 用户表
 2. **KnowledgeBase** - 知识库表
@@ -57,10 +57,7 @@ ragserver/
 6. **APIUsageLog** - API使用日志表
 
 ### 重要规则
-
-- **不使用独立的分块策略表**：分块配置直接存储在 `knowledge_bases.settings.chunking_config` 和 `documents.chunking_config` 中
-- **向量维度**: 使用 1024维（BAAI/bge-m3 模型）
-- **双向量**: `content_embedding` 和 `summary_embedding`
+- pass
 
 ## 开发规范
 

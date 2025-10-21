@@ -36,19 +36,6 @@ dev-install: install ## 安装开发依赖
 	@$(UV) add --dev pytest pytest-asyncio httpx black ruff mypy
 	@echo "$(GREEN)✓ Development dependencies installed$(NC)"
 
-setup-env: ## 创建 .env 文件（如果不存在）
-	@if [ ! -f .env ]; then \
-		echo "$(BLUE)Creating .env file from env.example...$(NC)"; \
-		cp env.example .env; \
-		echo "$(GREEN)✓ .env file created from env.example$(NC)"; \
-		echo "$(YELLOW)⚠ Please edit .env and update the following:$(NC)"; \
-		echo "  - JWT_SECRET_KEY (use: openssl rand -hex 32)"; \
-		echo "  - Database passwords"; \
-		echo "  - API keys (QWEN_API_KEY, etc.)"; \
-	else \
-		echo "$(YELLOW).env file already exists$(NC)"; \
-	fi
-
 ##@ Docker 服务管理
 
 docker-up: ## 启动 Docker 服务（PostgreSQL, Redis, MinIO, Prometheus, Grafana）

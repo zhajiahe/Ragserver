@@ -38,9 +38,9 @@ module.exports = {
 
     // Taskiq Worker - 文档处理队列
     {
-      name: 'ragserver-worker-document',
+      name: 'ragserver-worker',
       script: '.venv/bin/taskiq',
-      args: `worker ragserver.tasks:broker --workers ${process.env.TASKIQ_WORKERS_DOCUMENT || 2}`,
+      args: `worker ragserver.tasks:broker --workers ${process.env.TASKIQ_WORKERS || 4}`,
       instances: 1,
       exec_mode: 'fork',
       autorestart: true,
@@ -50,25 +50,6 @@ module.exports = {
       error_file: './logs/pm2/worker-doc-error.log',
       out_file: './logs/pm2/worker-doc-out.log',
       log_file: './logs/pm2/worker-doc-combined.log',
-      time: true,
-      merge_logs: true,
-      log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
-    },
-
-    // Taskiq Worker - Embedding 生成队列
-    {
-      name: 'ragserver-worker-embedding',
-      script: '.venv/bin/taskiq',
-      args: `worker ragserver.tasks:broker --workers ${process.env.TASKIQ_WORKERS_EMBEDDING || 2}`,
-      instances: 1,
-      exec_mode: 'fork',
-      autorestart: true,
-      watch: false,
-      max_memory_restart: '1G',
-      env_file: '.env',
-      error_file: './logs/pm2/worker-emb-error.log',
-      out_file: './logs/pm2/worker-emb-out.log',
-      log_file: './logs/pm2/worker-emb-combined.log',
       time: true,
       merge_logs: true,
       log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
