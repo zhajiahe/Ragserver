@@ -59,6 +59,8 @@ class User(Base, TimeMixin):
     documents = relationship("Document", back_populates="uploader")
     chunking_strategies = relationship("ChunkingStrategy", back_populates="user")
     api_keys = relationship("APIKey", back_populates="user")
+    document_chunks = relationship("DocumentChunk", back_populates="user")
+    api_usage_logs = relationship("APIUsageLog", back_populates="user")
 
     def __repr__(self):
         return f"<User(id={self.id}, username={self.username}, email={self.email})>"
@@ -181,6 +183,7 @@ class DocumentChunk(Base, TimeMixin):
     knowledge_base = relationship("KnowledgeBase", back_populates="chunks")
     chunking_strategy = relationship("ChunkingStrategy", back_populates="chunks")
     parent_chunk = relationship("DocumentChunk", remote_side=[id])
+    user = relationship("User", back_populates="document_chunks")
 
     __table_args__ = (
         Index('idx_chunk_doc', 'document_id'),
@@ -257,7 +260,7 @@ class APIKey(Base, TimeMixin):
     key_suffix = Column(String(10), nullable=False)  # for display, last 4 chars
 
     # 权限配置
-    scopes = Column(JSON, default=list)  # ["search", "upload", "read", "delete"]
+    scopes = Column(JSONB, default=list)  # ["search", "upload", "read", "delete"]
 
     # 配额限制
     rate_limit = Column(Integer, default=60)  # requests per minute
@@ -309,7 +312,7 @@ class APIUsageLog(Base):
     error_message = Column(Text)
 
     # 请求上下文
-    request_body = Column(JSON)  # optional, for debugging
+    request_body = Column(JSONB)  # optional, for debugging
     ip_address = Column(String(45), nullable=False)
     user_agent = Column(String(500))
 
@@ -318,7 +321,7 @@ class APIUsageLog(Base):
 
     # 关联关系
     api_key = relationship("APIKey", back_populates="usage_logs")
-    user = relationship("User")
+    user = relationship("User", back_populates="api_usage_logs")
 
     __table_args__ = (
         Index('idx_aul_api_key', 'api_key_id'),
