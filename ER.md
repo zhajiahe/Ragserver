@@ -18,7 +18,7 @@ erDiagram
         bigint storage_used
         int api_calls_count
     }
-    KNOWLEDGE_BASE {
+    collection {
         UUID id PK
         UUID user_id FK
         string name
@@ -35,7 +35,7 @@ erDiagram
     }
     DOCUMENT {
         UUID id PK
-        UUID knowledge_base_id FK
+        UUID collection_id FK
         UUID uploaded_by FK
         string filename
         string file_type
@@ -56,7 +56,7 @@ erDiagram
     DOCUMENT_CHUNK {
         UUID id PK
         UUID document_id FK
-        UUID knowledge_base_id FK
+        UUID collection_id FK
         UUID user_id FK
         text content
         string content_hash
@@ -71,7 +71,7 @@ erDiagram
     API_KEY {
         UUID id PK
         UUID user_id FK
-        UUID knowledge_base_id FK
+        UUID collection_id FK
         string name
         string description
         string key_hash
@@ -105,18 +105,18 @@ erDiagram
         timestamptz created_at
     }
 
-    USER ||--o{ KNOWLEDGE_BASE : owns
+    USER ||--o{ collection : owns
     USER ||--o{ DOCUMENT : uploads
     USER ||--o{ DOCUMENT_CHUNK : owns
     USER ||--o{ API_KEY : owns
     USER ||--o{ API_USAGE_LOG : owns
 
-    KNOWLEDGE_BASE ||--o{ DOCUMENT : contains
-    KNOWLEDGE_BASE ||--o{ DOCUMENT_CHUNK : has
+    collection ||--o{ DOCUMENT : contains
+    collection ||--o{ DOCUMENT_CHUNK : has
 
     DOCUMENT ||--o{ DOCUMENT_CHUNK : splits_into
 
-    API_KEY }|--|| KNOWLEDGE_BASE : scopes_to
+    API_KEY }|--|| collection : scopes_to
     API_KEY ||--o{ API_USAGE_LOG : records
 
     DOCUMENT_CHUNK ||--o{ DOCUMENT_CHUNK : parent_of
@@ -132,7 +132,7 @@ erDiagram
 - `storage_used`: 用户已使用存储空间（触发器维护）
 - 数据隔离：所有资源通过 `user_id` 隔离
 
-### 2. KNOWLEDGE_BASE (知识库表)
+### 2. collection (知识库表)
 - 文档集合的容器
 - `status`: `active` | `archived`
 - `settings` (JSONB): 包含分块配置、embedding配置、搜索配置
@@ -153,13 +153,13 @@ erDiagram
 - `embedding_model`: 默认 `BAAI/bge-m3`
 - `content_hash`: 分块去重
 - `parent_chunk_id`: 支持层级分块
-- 冗余 `knowledge_base_id` 和 `user_id` 字段以提升查询性能
+- 冗余 `collection_id` 和 `user_id` 字段以提升查询性能
 
 ### 5. API_KEY (API密钥表)
 - 外部API访问管理
 - `key_hash`: SHA256哈希，不存储明文
 - `scopes`: 权限数组 `["search", "upload", "read", "delete"]`
-- `knowledge_base_id`: 可选，限定访问范围
+- `collection_id`: 可选，限定访问范围
 
 ### 6. API_USAGE_LOG (API使用日志表)
 - API调用记录
@@ -179,9 +179,9 @@ CREATE INDEX idx_chunks_content_fts ON document_chunks
 USING gin(to_tsvector('chinese', content));
 
 -- 常规索引
-CREATE INDEX idx_kb_user ON knowledge_bases(user_id);
-CREATE INDEX idx_doc_kb_status ON documents(knowledge_base_id, status);
-CREATE INDEX idx_chunks_kb_user ON document_chunks(knowledge_base_id, user_id);
+CREATE INDEX idx_kb_user ON collections(user_id);
+CREATE INDEX idx_doc_kb_status ON documents(collection_id, status);
+CREATE INDEX idx_chunks_kb_user ON document_chunks(collection_id, user_id);
 CREATE INDEX idx_apikey_hash ON api_keys(key_hash);
 ```
 

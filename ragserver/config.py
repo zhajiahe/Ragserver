@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     )
     
     # ==================== 应用基础配置 ====================
-    app_name: str = Field(default="RAG Knowledge Base Server", description="应用名称")
+    app_name: str = Field(default="RAG Collection Server", description="应用名称")
     app_version: str = Field(default="1.0.0", description="应用版本")
     debug: bool = Field(default=True, description="调试模式")
     log_level: str = Field(default="INFO", description="日志级别")
@@ -166,7 +166,6 @@ class Settings(BaseSettings):
     embedding_dimension: int = Field(default=1024, description="Embedding 向量维度（bge-m3: 1024维）")
     
     # ==================== LLM 配置 ====================
-    # 用于自然语言生成分块策略
     default_llm_provider: str = Field(default="siliconflow", description="默认 LLM 提供商")
 
     # SiliconFlow LLM
@@ -240,8 +239,8 @@ class Settings(BaseSettings):
     
     # ==================== 存储配额配置 ====================
     default_user_storage_quota_gb: int = Field(default=10, description="默认用户存储配额（GB）")
-    max_knowledge_bases_per_user: int = Field(default=100, description="每个用户最多知识库数量")
-    max_documents_per_knowledge_base: int = Field(default=10000, description="每个知识库最多文档数量")
+    max_collections_per_user: int = Field(default=100, description="每个用户最多知识库数量")
+    max_documents_per_collection: int = Field(default=10000, description="每个知识库最多文档数量")
     
     @property
     def default_user_storage_quota_bytes(self) -> int:

@@ -1,6 +1,6 @@
 /**
  * PM2 配置文件
- * RAG Knowledge Base Server
+ * RAG Collection Server
  * 
  * 使用说明:
  * - 启动所有服务: pm2 start ecosystem.config.js

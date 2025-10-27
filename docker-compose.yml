@@ -3,7 +3,7 @@ version: '3.8'
 services:
   # PostgreSQL with pgvector extension
   postgres:
-    image: pgvector/pgvector:pg16
+    image: paradedb/paradedb:latest
     container_name: ragserver-postgres
     env_file:
       - .env

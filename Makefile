@@ -20,7 +20,7 @@ NC := \033[0m # No Color
 ##@ 帮助
 
 help: ## 显示帮助信息
-	@echo "$(BLUE)RAG Knowledge Base Server - Makefile$(NC)"
+	@echo "$(BLUE)RAG Collection Server - Makefile$(NC)"
 	@echo ""
 	@awk 'BEGIN {FS = ":.*##"; printf "Usage:\n  make $(YELLOW)<target>$(NC)\n"} /^[a-zA-Z_-]+:.*?##/ { printf "  $(BLUE)%-20s$(NC) %s\n", $$1, $$2 } /^##@/ { printf "\n$(GREEN)%s$(NC)\n", substr($$0, 5) } ' $(MAKEFILE_LIST)
 
@@ -231,7 +231,7 @@ grafana-console: ## 打开 Grafana 控制台
 	@open http://localhost:3000 || xdg-open http://localhost:3000 || echo "Please open http://localhost:3000 manually"
 
 version: ## 显示版本信息
-	@echo "$(BLUE)RAG Knowledge Base Server$(NC)"
+	@echo "$(BLUE)RAG Collection Server$(NC)"
 	@echo "Version: 1.0.0"
 	@echo ""
 	@echo "Python: $$($(PYTHON) --version)"

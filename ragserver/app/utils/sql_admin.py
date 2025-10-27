@@ -2,7 +2,7 @@ from sqladmin import Admin, ModelView
 
 from ragserver.app.models import (
     User,
-    KnowledgeBase,
+    Collection,
     Document,
     DocumentChunk,
     ChunkingStrategy,
@@ -15,8 +15,8 @@ class UserAdmin(ModelView):
     model = User
 
 
-class KnowledgeBaseAdmin(ModelView):
-    model = KnowledgeBase
+class CollectionAdmin(ModelView):
+    model = Collection
 
 
 class DocumentAdmin(ModelView):
@@ -42,7 +42,7 @@ class APIUsageLogAdmin(ModelView):
 def setup_admin(app, engine) -> Admin:
     admin = Admin(app, engine)
     admin.add_view(UserAdmin)
-    admin.add_view(KnowledgeBaseAdmin)
+    admin.add_view(CollectionAdmin)
     admin.add_view(DocumentAdmin)
     admin.add_view(DocumentChunkAdmin)
     admin.add_view(ChunkingStrategyAdmin)

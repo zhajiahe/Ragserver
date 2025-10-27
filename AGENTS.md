@@ -1,4 +1,4 @@
-# RAG Knowledge Base Server - AI Assistant 开发指南
+# RAG Collection Server - AI Assistant 开发指南
 
 > 本文档为 AI 代码助手（如 Cursor、GitHub Copilot、Cline等）提供项目开发指南。
 
@@ -16,19 +16,23 @@
 4. **类型安全**: 使用 Pydantic 进行数据验证
 5. **数据隔离**: 所有资源必须按 `user_id` 隔离
 
+## uv
+1. 安装环境或者运行python需要激活环境
+2. source .venv/bin/activate
+
 ## 项目结构
 
 ```
 ragserver/
+├── tests/ 测试脚本
 ├── app/
 │   ├── models.py           # SQLAlchemy 数据模型
-│   ├── schemas.py          # Pydantic 数据模式
 │   ├── api/
-│   │   └── v1/
-│   │       ├── users.py    # 用户管理接口
-│   │       ├── kb.py       # 知识库管理接口
-│   │       ├── documents.py # 文档管理接口
-│   │       └── search.py   # 搜索接口
+│   │   ├── files.py    #文件上传接口
+│   │   ├── users.py    # 用户管理接口
+│   │   ├── kb.py       # 知识库管理接口
+│   │   ├── documents.py # 文档管理接口
+│   │   └── search.py   # 搜索接口
 │   ├── services/
 │   │   ├── embedding.py    # Embedding服务
 │   │   ├── parser.py       # 文档解析服务
@@ -39,8 +43,9 @@ ragserver/
 │       └── redis_client.py # Redis工具
 ├── config.py               # 配置管理
 ├── database.py             # 数据库连接
-├── tasks.py                # Taskiq异步任务
+├── taskiq_worker.py        # Taskiq worker，具体任务代码可以在services里实现
 └── main.py                 # FastAPI应用入口
+
 ```
 
 ## 数据模型设计
@@ -50,7 +55,7 @@ ragserver/
 参考 `ER.md` 了解完整的数据模型。关键实体：
 
 1. **User** - 用户表
-2. **KnowledgeBase** - 知识库表
+2. **Collection** - 知识库表
 3. **Document** - 文档表
 4. **DocumentChunk** - 文档分块表（含向量）
 5. **APIKey** - API密钥表
@@ -69,9 +74,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 async def get_kb(db: AsyncSession, kb_id: UUID, user_id: UUID):
     result = await db.execute(
-        select(KnowledgeBase).where(
-            KnowledgeBase.id == kb_id,
-            KnowledgeBase.user_id == user_id  # 必须过滤 user_id
+        select(Collection).where(
+            Collection.id == kb_id,
+            Collection.user_id == user_id  # 必须过滤 user_id
         )
     )
     return result.scalar_one_or_none()
@@ -79,7 +84,7 @@ async def get_kb(db: AsyncSession, kb_id: UUID, user_id: UUID):
 # ❌ 错误：忘记数据隔离
 async def get_kb_bad(db: AsyncSession, kb_id: UUID):
     result = await db.execute(
-        select(KnowledgeBase).where(KnowledgeBase.id == kb_id)
+        select(Collection).where(Collection.id == kb_id)
     )
     return result.scalar_one_or_none()
 ```
@@ -91,17 +96,17 @@ async def get_kb_bad(db: AsyncSession, kb_id: UUID):
 from fastapi import APIRouter, Depends
 from app.dependencies import get_current_user, get_db
 
-router = APIRouter(prefix="/api/v1/knowledge-bases", tags=["knowledge_bases"])
+router = APIRouter(prefix="/api/v1/collections", tags=["collections"])
 
 @router.get("/{kb_id}")
-async def get_knowledge_base(
+async def get_collection(
     kb_id: UUID,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
     kb = await get_kb(db, kb_id, current_user.id)
     if not kb:
-        raise HTTPException(status_code=404, detail="Knowledge base not found")
+        raise HTTPException(status_code=404, detail="Collection not found")
     return kb
 ```
 
@@ -111,7 +116,7 @@ async def get_knowledge_base(
 # ✅ 正确：使用 Pydantic schemas
 from pydantic import BaseModel, Field, field_validator
 
-class KnowledgeBaseCreate(BaseModel):
+class CollectionCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
     description: Optional[str] = Field(None, max_length=500)
     settings: Optional[Dict[str, Any]] = Field(default_factory=dict)
@@ -187,7 +192,7 @@ class EmbeddingService:
 
 ```python
 # ✅ 正确：从 JSONB 字段读取配置
-async def get_chunking_config(kb: KnowledgeBase, doc: Optional[Document] = None):
+async def get_chunking_config(kb: Collection, doc: Optional[Document] = None):
     """获取分块配置（文档级优先，知识库级备选）"""
     if doc and doc.chunking_config:
         return doc.chunking_config
@@ -227,7 +232,7 @@ async def search_chunks(
             (1 - DocumentChunk.content_embedding.cosine_distance(query_embedding)).label('similarity')
         )
         .where(
-            DocumentChunk.knowledge_base_id == kb_id,
+            DocumentChunk.collection_id == kb_id,
             DocumentChunk.user_id == user_id,
             (1 - DocumentChunk.content_embedding.cosine_distance(query_embedding)) > threshold
         )
@@ -278,18 +283,18 @@ async def delete_kb(kb_id: UUID, current_user: User = Depends(get_current_user))
     if not kb:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Knowledge base not found"
+            detail="Collection not found"
         )
     
     if kb.status == "archived":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Cannot delete archived knowledge base"
+            detail="Cannot delete archived Collection"
         )
     
     await db.delete(kb)
     await db.commit()
-    return {"message": "Knowledge base deleted successfully"}
+    return {"message": "Collection deleted successfully"}
 ```
 
 ## 性能优化建议
@@ -302,7 +307,7 @@ from sqlalchemy.orm import joinedload
 
 result = await db.execute(
     select(Document)
-    .options(joinedload(Document.knowledge_base))
+    .options(joinedload(Document.collection))
     .where(Document.id == doc_id)
 )
 ```
@@ -353,7 +358,7 @@ from httpx import AsyncClient
 @pytest.mark.asyncio
 async def test_create_kb(client: AsyncClient, auth_headers):
     response = await client.post(
-        "/api/v1/knowledge-bases",
+        "/api/v1/collections",
         json={"name": "Test KB", "description": "Test"},
         headers=auth_headers
     )
