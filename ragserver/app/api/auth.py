@@ -8,8 +8,8 @@ from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ragserver.app.dependencies import (
-    get_db,
+from ragserver.app.dependencies import get_db
+from ragserver.app.dependencies.security import (
     get_password_hash,
     verify_password,
     create_access_token,
