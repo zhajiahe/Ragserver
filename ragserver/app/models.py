@@ -5,16 +5,16 @@ SQLAlchemy模型，包含用户管理、知识库管理、文档处理等核心�
 """
 
 from datetime import datetime
-from typing import Optional, List, Dict, Any
 from sqlalchemy import (
-    Column, String, Text, Integer, Boolean, DateTime, BigInteger,
-    Float, JSON, Index, UniqueConstraint, ForeignKey, UUID as PGUUID
+    Column, String, Text, Integer, Boolean, DateTime, BigInteger, text, event,
+    Index, ForeignKey, UUID as PGUUID
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from pgvector.sqlalchemy import Vector
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 import uuid
+from ragserver.config import settings
 
 Base = declarative_base()
 
@@ -51,7 +51,7 @@ class User(Base, TimeMixin):
     api_calls_count = Column(Integer, default=0)
 
     # 关联关系
-    knowledge_bases = relationship("KnowledgeBase", back_populates="user")
+    collections = relationship("Collection", back_populates="user")
     documents = relationship("Document", back_populates="uploader")
     api_keys = relationship("APIKey", back_populates="user")
     document_chunks = relationship("DocumentChunk", back_populates="user")
@@ -61,9 +61,9 @@ class User(Base, TimeMixin):
         return f"<User(id={self.id}, username={self.username}, email={self.email})>"
 
 
-class KnowledgeBase(Base, TimeMixin):
+class Collection(Base, TimeMixin):
     """知识库模型"""
-    __tablename__ = "knowledge_bases"
+    __tablename__ = "collections"
 
     id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(PGUUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
@@ -85,10 +85,12 @@ class KnowledgeBase(Base, TimeMixin):
     # 配置信息
     settings = Column(JSONB, default=dict)
 
+    language = Column(String(20), default="zh", nullable=False)
+
     # 关联关系
-    user = relationship("User", back_populates="knowledge_bases")
-    documents = relationship("Document", back_populates="knowledge_base")
-    chunks = relationship("DocumentChunk", back_populates="knowledge_base")
+    user = relationship("User", back_populates="collections")
+    documents = relationship("Document", back_populates="collection", passive_deletes=True)
+    chunks = relationship("DocumentChunk", back_populates="collection", passive_deletes=True)
 
     __table_args__ = (
         Index('idx_kb_user', 'user_id'),
@@ -96,7 +98,7 @@ class KnowledgeBase(Base, TimeMixin):
     )
 
     def __repr__(self):
-        return f"<KnowledgeBase(id={self.id}, name={self.name}, user_id={self.user_id})>"
+        return f"<Collection(id={self.id}, name={self.name}, user_id={self.user_id})>"
 
 
 class Document(Base, TimeMixin):
@@ -104,7 +106,7 @@ class Document(Base, TimeMixin):
     __tablename__ = "documents"
 
     id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    knowledge_base_id = Column(PGUUID(as_uuid=True), ForeignKey("knowledge_bases.id"), nullable=False)
+    collection_id = Column(PGUUID(as_uuid=True), ForeignKey("collections.id", ondelete='CASCADE'), nullable=False)
     uploaded_by = Column(PGUUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
 
     # 文件信息
@@ -114,6 +116,11 @@ class Document(Base, TimeMixin):
     file_path = Column(String(500), nullable=False)  # MinIO路径
     mime_type = Column(String(100), nullable=False)
     file_hash = Column(String(64), nullable=False)  # SHA256
+
+    # 语言（用于 OCR、分词、分块等策略）
+    language = Column(String(20), default="zh", nullable=False)
+
+    content_text = Column(Text) # Markdown格式文本
 
     # 处理状态
     status = Column(String(20), default="pending", nullable=False)  # pending/processing/completed/failed
@@ -131,16 +138,15 @@ class Document(Base, TimeMixin):
     chunk_count = Column(Integer, default=0)
 
     # 关联关系
-    knowledge_base = relationship("KnowledgeBase", back_populates="documents")
+    collection = relationship("Collection", back_populates="documents")
     uploader = relationship("User", back_populates="documents")
-    chunks = relationship("DocumentChunk", back_populates="document")
+    chunks = relationship("DocumentChunk", back_populates="document", passive_deletes=True)
 
     __table_args__ = (
-        Index('idx_doc_kb', 'knowledge_base_id'),
+        Index('idx_doc_kb', 'collection_id'),
         Index('idx_doc_uploader', 'uploaded_by'),
         Index('idx_doc_status', 'status'),
         Index('idx_doc_hash', 'file_hash'),
-        UniqueConstraint('knowledge_base_id', 'file_hash', name='uq_doc_kb_hash'),
     )
 
     def __repr__(self):
@@ -152,8 +158,8 @@ class DocumentChunk(Base, TimeMixin):
     __tablename__ = "document_chunks"
 
     id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    document_id = Column(PGUUID(as_uuid=True), ForeignKey("documents.id"), nullable=False)
-    knowledge_base_id = Column(PGUUID(as_uuid=True), ForeignKey("knowledge_bases.id"), nullable=False)
+    document_id = Column(PGUUID(as_uuid=True), ForeignKey("documents.id", ondelete='CASCADE'), nullable=False)
+    collection_id = Column(PGUUID(as_uuid=True), ForeignKey("collections.id", ondelete='CASCADE'), nullable=False)
     user_id = Column(PGUUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
 
     # 分块内容
@@ -162,8 +168,8 @@ class DocumentChunk(Base, TimeMixin):
     chunk_index = Column(Integer, nullable=False)  # 0-based index in document
     summary = Column(Text) # 块的摘要
     # 向量数据（需 PostgreSQL + pgvector 扩展）
-    content_embedding = Column(Vector(1024))  # bge-m3: 1024维
-    summary_embedding = Column(Vector(1024))
+    content_embedding = Column(Vector(settings.embedding_dimension))  # bge-m3: 默认 1024 维（可配置）
+    summary_embedding = Column(Vector(settings.embedding_dimension))
     embedding_model = Column(String(50), default="BAAI/bge-m3")
 
     # 元数据
@@ -174,23 +180,40 @@ class DocumentChunk(Base, TimeMixin):
 
     # 关联关系
     document = relationship("Document", back_populates="chunks")
-    knowledge_base = relationship("KnowledgeBase", back_populates="chunks")
+    collection = relationship("Collection", back_populates="chunks")
     parent_chunk = relationship("DocumentChunk", remote_side=[id])
     user = relationship("User", back_populates="document_chunks")
 
     __table_args__ = (
         Index('idx_chunk_doc', 'document_id'),
-        Index('idx_chunk_kb', 'knowledge_base_id'),
+        Index('idx_chunk_kb', 'collection_id'),
         Index('idx_chunk_user', 'user_id'),
         Index('idx_chunk_hash', 'content_hash'),
-        Index('idx_chunk_embedding_hnsw', 'embedding', postgresql_using='hnsw'),
-        Index('idx_chunk_embedding_ivfflat', 'embedding', postgresql_using='ivfflat'),
-        Index('idx_chunk_kb_user', 'knowledge_base_id', 'user_id'),
+        Index(
+            'idx_chunk_content_embedding_hnsw',
+            content_embedding,
+            postgresql_using='hnsw',
+            postgresql_ops={'content_embedding': 'vector_cosine_ops'},
+            postgresql_with={'m': settings.hnsw_m, 'ef_construction': settings.hnsw_ef_construction},
+        ),
+        Index('idx_chunk_kb_user', 'collection_id', 'user_id'),
     )
 
     def __repr__(self):
         return f"<DocumentChunk(id={self.id}, document_id={self.document_id}, index={self.chunk_index})>"
 
+# 创建 BM25 索引
+@event.listens_for(DocumentChunk.__table__, 'after_create')
+def create_bm25_index(target, connection, **kw):
+    connection.execute(text("""
+        CALL paradedb.create_bm25(
+            index_name => 'document_chunks_bm25_idx',
+            table_name => 'document_chunks',
+            key_field => 'id',
+            text_fields => paradedb.field('content'))
+        )
+    """))
+    connection.commit()
 
 class APIKey(Base, TimeMixin):
     """API密钥模型"""
@@ -198,7 +221,7 @@ class APIKey(Base, TimeMixin):
 
     id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(PGUUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
-    knowledge_base_id = Column(PGUUID(as_uuid=True), ForeignKey("knowledge_bases.id"))  # optional, for KB-specific keys
+    collection_id = Column(PGUUID(as_uuid=True), ForeignKey("collections.id"))  # optional, for KB-specific keys
 
     # 基本信息
     name = Column(String(100), nullable=False)
@@ -230,12 +253,12 @@ class APIKey(Base, TimeMixin):
 
     # 关联关系
     user = relationship("User", back_populates="api_keys")
-    knowledge_base = relationship("KnowledgeBase")
+    collection = relationship("Collection")
     usage_logs = relationship("APIUsageLog", back_populates="api_key")
 
     __table_args__ = (
         Index('idx_ak_user', 'user_id'),
-        Index('idx_ak_kb', 'knowledge_base_id'),
+        Index('idx_ak_kb', 'collection_id'),
         Index('idx_ak_active', 'is_active'),
         Index('idx_ak_hash', 'key_hash'),
     )
