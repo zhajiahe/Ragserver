@@ -126,7 +126,7 @@
 
 ##### 2.3.3 文档管理接口
 - `GET /api/v1/collections/{kb_id}/documents` - 获取文档列表
-- `POST /api/v1/collections/{kb_id}/documents/upload` - 上传文档(支持批量)
+- `POST /api/v1/collections/{kb_id}/upload` - 上传文档(支持批量)
 - `GET /api/v1/documents/{id}` - 获取文档详情
 - `DELETE /api/v1/documents` - 删除文档(支持批量)
 - `POST /api/v1/documents/process` 解析文档(支持批量)

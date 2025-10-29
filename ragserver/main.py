@@ -15,9 +15,9 @@ from ragserver.app.dependencies.db import async_engine
 from ragserver.app.models import Base
 
 # 导入所有 API 路由
-from ragserver.app.api import auth
+from ragserver.app.api import auth, collections, documents
 # TODO: 以下路由待实现
-# from ragserver.app.api import collections, files, parser
+# from ragserver.app.api import files, parser
 
 
 @asynccontextmanager
@@ -121,9 +121,11 @@ def create_app() -> FastAPI:
     # 认证路由
     app.include_router(auth.router)
     
-    # TODO: 以下路由待实现
     # 知识库管理路由
-    # app.include_router(collections.router)
+    app.include_router(collections.router)
+    
+    # 文档管理路由
+    app.include_router(documents.router)
     
     # 文件上传路由
     # app.include_router(files.router)
