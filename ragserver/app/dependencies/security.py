@@ -4,10 +4,10 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
+import bcrypt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
-from passlib.context import CryptContext
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -16,15 +16,39 @@ from ragserver.app.models import User
 from .db import get_db
 
 
-password_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
-
+# 使用 bcrypt 进行密码哈希和验证
 def get_password_hash(password: str) -> str:
-    return password_context.hash(password)
+    """生成密码哈希值
+    
+    Args:
+        password: 明文密码
+        
+    Returns:
+        str: bcrypt 哈希后的密码字符串
+    """
+    # 生成盐并哈希密码
+    salt = bcrypt.gensalt()
+    hashed = bcrypt.hashpw(password.encode('utf-8'), salt)
+    return hashed.decode('utf-8')
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    return password_context.verify(plain_password, hashed_password)
+    """验证密码是否匹配
+    
+    Args:
+        plain_password: 明文密码
+        hashed_password: 哈希后的密码
+        
+    Returns:
+        bool: 密码是否匹配
+    """
+    try:
+        return bcrypt.checkpw(
+            plain_password.encode('utf-8'),
+            hashed_password.encode('utf-8')
+        )
+    except Exception:
+        return False
 
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")

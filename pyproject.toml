@@ -1,7 +1,7 @@
 [project]
-name = "ragbackend"
+name = "ragserver"
 version = "0.1.1"
-description = "Ragbacjend: A RAG service"
+description = "RAG Collection Server - AI knowledge base management platform"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
@@ -27,8 +27,6 @@ dependencies = [
     "lxml>=5.4.0",
     "unstructured>=0.17.2",
     "python-jose[cryptography]>=3.3.0",
-    "passlib[bcrypt]>=1.7.4",
-    "bcrypt>=4.0.1",
     "minio>=7.2.9",
     "email-validator>=2.2.0",
     "greenlet>=3.2.3",
@@ -37,17 +35,20 @@ dependencies = [
     "sqlalchemy>=2.0.41",
     "sqladmin>=0.21.0",
     "scalar-fastapi>=1.4.3",
+    "pytest>=8.4.1",
+    "pytest-asyncio>=0.26.0",
+    "bcrypt>=5.0.0",
 ]
 
 [project.packages]
-find = { where = ["ragbackend"] }
+find = { where = ["ragserver"] }
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["ragbackend"]
+packages = ["ragserver"]
 
 [dependency-groups]
 dev = [
@@ -56,8 +57,7 @@ dev = [
     "langgraph-cli>=0.1.75",
     "pytest-socket>=0.7.0",
     "pytest-timeout>=2.4.0",
-    "pytest-asyncio>=0.26.0",
-    "pytest>=8.4.1",
+    "pytest-asyncio>=1.0.0",
 ]
 
 [tool.pytest.ini_options]
@@ -138,9 +138,4 @@ ignore = [
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
-
-[tool.uv.workspace]
-members = [
-    "ragserver",
-]
 

@@ -1,3 +1,6 @@
+"""
+用户认证相关 API 路由
+"""
 from __future__ import annotations
 
 from datetime import timedelta

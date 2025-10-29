@@ -246,16 +246,15 @@ class Settings(BaseSettings):
     def default_user_storage_quota_bytes(self) -> int:
         """默认用户存储配额（字节）"""
         return self.default_user_storage_quota_gb * 1024 * 1024 * 1024
-    
-    # ==================== OCR 配置 ====================
-    ocr_enabled: bool = Field(default=True, description="是否启用 OCR")
-    ocr_auto_detect_threshold: int = Field(default=50, description="OCR 自动检测阈值（字符数/页）")
-    ocr_languages: List[str] = Field(default=["zh", "en"], description="OCR 支持的语言")
-    
+        
     # ==================== Webhook 配置 ====================
     webhook_enabled: bool = Field(default=True, description="是否启用 Webhook")
     webhook_timeout: int = Field(default=10, description="Webhook 超时时间（秒）")
     webhook_max_retries: int = Field(default=3, description="Webhook 最大重试次数")
+
+    # ==================== 测试配置 ====================
+    api_base_url: str = Field(default="http://localhost:8000", description="API 基础 URL")
+    http_timeout: int = Field(default=30, description="HTTP 请求超时时间（秒）")
     
     # ==================== 开发模式配置 ====================
     reload: bool = Field(default=False, description="是否启用热重载")

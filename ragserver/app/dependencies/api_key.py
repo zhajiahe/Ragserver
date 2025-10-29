@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 from datetime import datetime
 from typing import Optional, Set, Callable
+from ragserver.app.utils.date_util import get_current_time
 
 from fastapi import Depends, Header, HTTPException
 from sqlalchemy import select
@@ -33,7 +34,7 @@ def api_key_dependency(required_scopes: Optional[Set[str]] = None) -> Callable:
         if api_key is None:
             raise HTTPException(status_code=401, detail="无效的 API Key")
 
-        if api_key.expires_at and api_key.expires_at < datetime.utcnow():
+        if api_key.expires_at and api_key.expires_at < get_current_time():
             raise HTTPException(status_code=401, detail="API Key 已过期")
 
         if required_scopes:

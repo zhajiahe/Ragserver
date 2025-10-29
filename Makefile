@@ -1,5 +1,5 @@
 .PHONY: help install dev-install setup-env docker-up docker-down docker-restart docker-logs migrate upgrade downgrade db-init dev worker start stop restart status clean test lint format
-
+SHELL := /bin/bash
 # 默认目标
 .DEFAULT_GOAL := help
 
@@ -38,7 +38,7 @@ dev-install: install ## 安装开发依赖
 
 ##@ Docker 服务管理
 
-docker-up: ## 启动 Docker 服务（PostgreSQL, Redis, MinIO, Prometheus, Grafana）
+docker-up: ## 启动 Docker 服务（PostgreSQL, Redis, MinIO）
 	@echo "$(BLUE)Starting Docker services...$(NC)"
 	@docker compose up -d
 	@echo "$(GREEN)✓ Docker services started$(NC)"
@@ -46,8 +46,6 @@ docker-up: ## 启动 Docker 服务（PostgreSQL, Redis, MinIO, Prometheus, Grafa
 	@echo "  - PostgreSQL:  localhost:5432"
 	@echo "  - Redis:       localhost:6379"
 	@echo "  - MinIO:       localhost:9000 (Console: 9001)"
-	@echo "  - Prometheus:  localhost:9091"
-	@echo "  - Grafana:     localhost:3000 (admin/admin)"
 
 docker-down: ## 停止 Docker 服务
 	@echo "$(BLUE)Stopping Docker services...$(NC)"

@@ -11,18 +11,18 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from pgvector.sqlalchemy import Vector
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import declarative_base, relationship
 import uuid
 from ragserver.config import settings
+from ragserver.app.utils.date_util import get_current_time
 
 Base = declarative_base()
 
 
 class TimeMixin:
     """时间戳混入类，为所有模型提供创建和更新时间"""
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=get_current_time, nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=get_current_time, onupdate=get_current_time, nullable=False)
 
 
 class User(Base, TimeMixin):
@@ -44,7 +44,7 @@ class User(Base, TimeMixin):
     is_superuser = Column(Boolean, default=False, nullable=False)
 
     # 时间信息
-    last_login_at = Column(DateTime)
+    last_login_at = Column(DateTime(timezone=True))
 
     # 统计信息
     storage_used = Column(BigInteger, default=0)  # bytes
@@ -80,7 +80,7 @@ class Collection(Base, TimeMixin):
     document_count = Column(Integer, default=0)
     total_size_bytes = Column(BigInteger, default=0)
     chunk_count = Column(Integer, default=0)
-    last_updated_at = Column(DateTime, default=datetime.utcnow)
+    last_updated_at = Column(DateTime(timezone=True), default=get_current_time)
 
     # 配置信息
     settings = Column(JSONB, default=dict)
@@ -128,10 +128,10 @@ class Document(Base, TimeMixin):
     error_message = Column(Text)
 
     # 时间信息
-    processed_at = Column(DateTime)
+    processed_at = Column(DateTime(timezone=True))
 
     # 元数据
-    metadata = Column(JSONB, default=dict)
+    meta = Column(JSONB, default=dict)
 
     # 分块配置（可选，默认使用知识库配置）
     chunking_config = Column(JSONB)
@@ -173,7 +173,7 @@ class DocumentChunk(Base, TimeMixin):
     embedding_model = Column(String(50), default="BAAI/bge-m3")
 
     # 元数据
-    metadata = Column(JSONB, default=dict)
+    meta = Column(JSONB, default=dict)
 
     # 关联信息
     parent_chunk_id = Column(PGUUID(as_uuid=True), ForeignKey("document_chunks.id"))  # for hierarchical chunking
@@ -202,18 +202,6 @@ class DocumentChunk(Base, TimeMixin):
     def __repr__(self):
         return f"<DocumentChunk(id={self.id}, document_id={self.document_id}, index={self.chunk_index})>"
 
-# 创建 BM25 索引
-@event.listens_for(DocumentChunk.__table__, 'after_create')
-def create_bm25_index(target, connection, **kw):
-    connection.execute(text("""
-        CALL paradedb.create_bm25(
-            index_name => 'document_chunks_bm25_idx',
-            table_name => 'document_chunks',
-            key_field => 'id',
-            text_fields => paradedb.field('content'))
-        )
-    """))
-    connection.commit()
 
 class APIKey(Base, TimeMixin):
     """API密钥模型"""
@@ -244,8 +232,8 @@ class APIKey(Base, TimeMixin):
 
     # 状态信息
     is_active = Column(Boolean, default=True, nullable=False)
-    expires_at = Column(DateTime)  # optional expiration
-    last_used_at = Column(DateTime)
+    expires_at = Column(DateTime(timezone=True))  # optional expiration
+    last_used_at = Column(DateTime(timezone=True))
     last_used_ip = Column(String(45))  # IPv4 or IPv6
 
     # 安全配置
@@ -290,7 +278,7 @@ class APIUsageLog(Base):
     user_agent = Column(String(500))
 
     # 时间信息
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=get_current_time, nullable=False)
 
     # 关联关系
     api_key = relationship("APIKey", back_populates="usage_logs")

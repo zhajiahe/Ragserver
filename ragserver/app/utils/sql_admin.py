@@ -5,7 +5,6 @@ from ragserver.app.models import (
     Collection,
     Document,
     DocumentChunk,
-    ChunkingStrategy,
     APIKey,
     APIUsageLog,
 )
@@ -27,10 +26,6 @@ class DocumentChunkAdmin(ModelView):
     model = DocumentChunk
 
 
-class ChunkingStrategyAdmin(ModelView):
-    model = ChunkingStrategy
-
-
 class APIKeyAdmin(ModelView):
     model = APIKey
 
@@ -45,7 +40,6 @@ def setup_admin(app, engine) -> Admin:
     admin.add_view(CollectionAdmin)
     admin.add_view(DocumentAdmin)
     admin.add_view(DocumentChunkAdmin)
-    admin.add_view(ChunkingStrategyAdmin)
     admin.add_view(APIKeyAdmin)
     admin.add_view(APIUsageLogAdmin)
     return admin
