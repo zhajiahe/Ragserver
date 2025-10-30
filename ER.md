@@ -68,56 +68,32 @@ erDiagram
         UUID parent_chunk_id FK
         timestamptz created_at
     }
-    API_KEY {
+    COLLECTION_SHARE {
         UUID id PK
-        UUID user_id FK
         UUID collection_id FK
+        UUID created_by FK
+        string share_token
         string name
         string description
-        string key_hash
-        string key_prefix
-        string key_suffix
-        JSONB scopes
-        int rate_limit
-        int daily_quota
-        int monthly_quota
-        int usage_count_today
-        int usage_count_month
         bool is_active
         timestamptz expires_at
+        int usage_count
         timestamptz last_used_at
-        string last_used_ip
+        JSONB search_config
         timestamptz created_at
-        JSONB security
-    }
-    API_USAGE_LOG {
-        UUID id PK
-        UUID api_key_id FK
-        UUID user_id FK
-        string endpoint
-        string method
-        JSONB request_body
-        int status_code
-        int response_time_ms
-        string error_message
-        string ip_address
-        string user_agent
-        timestamptz created_at
+        timestamptz updated_at
     }
 
     USER ||--o{ collection : owns
     USER ||--o{ DOCUMENT : uploads
     USER ||--o{ DOCUMENT_CHUNK : owns
-    USER ||--o{ API_KEY : owns
-    USER ||--o{ API_USAGE_LOG : owns
+    USER ||--o{ COLLECTION_SHARE : creates
 
     collection ||--o{ DOCUMENT : contains
     collection ||--o{ DOCUMENT_CHUNK : has
+    collection ||--o{ COLLECTION_SHARE : shared_via
 
     DOCUMENT ||--o{ DOCUMENT_CHUNK : splits_into
-
-    API_KEY }|--|| collection : scopes_to
-    API_KEY ||--o{ API_USAGE_LOG : records
 
     DOCUMENT_CHUNK ||--o{ DOCUMENT_CHUNK : parent_of
 ```
@@ -155,15 +131,14 @@ erDiagram
 - `parent_chunk_id`: 支持层级分块
 - 冗余 `collection_id` 和 `user_id` 字段以提升查询性能
 
-### 5. API_KEY (API密钥表)
-- 外部API访问管理
-- `key_hash`: SHA256哈希，不存储明文
-- `scopes`: 权限数组 `["search", "upload", "read", "delete"]`
-- `collection_id`: 可选，限定访问范围
-
-### 6. API_USAGE_LOG (API使用日志表)
-- API调用记录
-- 成功日志保留30天，错误日志保留90天
+### 5. COLLECTION_SHARE (知识库分享表)
+- 知识库分享链接管理
+- `share_token`: 分享令牌，格式如 `kb_share_xxx`，用于URL访问
+- `collection_id`: 关联的知识库
+- `is_active`: 是否激活，可以停用分享链接
+- `expires_at`: 可选过期时间
+- `usage_count`: 使用次数统计
+- `search_config`: 搜索配置（top_k限制、过滤条件等）
 
 ---
 
@@ -182,7 +157,8 @@ USING gin(to_tsvector('chinese', content));
 CREATE INDEX idx_kb_user ON collections(user_id);
 CREATE INDEX idx_doc_kb_status ON documents(collection_id, status);
 CREATE INDEX idx_chunks_kb_user ON document_chunks(collection_id, user_id);
-CREATE INDEX idx_apikey_hash ON api_keys(key_hash);
+CREATE INDEX idx_share_token ON collection_shares(share_token);
+CREATE INDEX idx_share_kb ON collection_shares(collection_id);
 ```
 
 ---

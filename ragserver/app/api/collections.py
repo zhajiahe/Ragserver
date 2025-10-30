@@ -3,6 +3,8 @@
 """
 from typing import List, Optional
 from uuid import UUID
+import secrets
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from pydantic import BaseModel, Field, ConfigDict
@@ -10,7 +12,7 @@ from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ragserver.app.dependencies import get_db, get_current_active_user
-from ragserver.app.models import Collection, User
+from ragserver.app.models import Collection, User, CollectionShare
 from ragserver.config import settings
 
 router = APIRouter(prefix="/api/v1/collections", tags=["知识库管理"])
@@ -60,6 +62,39 @@ class CollectionListResponse(BaseModel):
     """知识库列表响应"""
     total: int
     items: List[CollectionResponse]
+
+
+class CollectionShareCreate(BaseModel):
+    """创建知识库分享请求"""
+    name: str = Field(..., min_length=1, max_length=100, description="分享名称")
+    description: Optional[str] = Field(None, max_length=500, description="分享描述")
+    expires_in_days: Optional[int] = Field(None, ge=1, le=365, description="过期天数（不设置则永久有效）")
+    search_config: Optional[dict] = Field(default_factory=dict, description="搜索配置")
+
+
+class CollectionShareResponse(BaseModel):
+    """知识库分享响应"""
+    model_config = ConfigDict(from_attributes=True)
+    
+    id: UUID
+    collection_id: UUID
+    share_token: str
+    name: str
+    description: Optional[str]
+    is_active: bool
+    expires_at: Optional[str]
+    usage_count: int
+    last_used_at: Optional[str]
+    search_config: dict
+    created_at: str
+    updated_at: str
+    share_url: str  # 完整的分享URL
+
+
+class CollectionShareListResponse(BaseModel):
+    """知识库分享列表响应"""
+    total: int
+    items: List[CollectionShareResponse]
 
 
 # ==================== API Endpoints ====================
@@ -394,4 +429,78 @@ async def archive_collection(
         updated_at=collection.updated_at.isoformat(),
         last_updated_at=collection.last_updated_at.isoformat() if collection.last_updated_at else None,
     )
+
+
+# ==================== 分享管理接口 ====================
+
+@router.post("/{collection_id}/share", response_model=CollectionShareResponse, status_code=status.HTTP_201_CREATED)
+async def create_share(
+    collection_id: UUID,
+    req: CollectionShareCreate,
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """创建知识库分享链接
+    
+    - 只能分享自己的知识库
+    - 生成唯一的分享令牌
+    - 支持设置过期时间
+    """
+    # 查询知识库
+    query = select(Collection).where(
+        Collection.id == collection_id,
+        Collection.user_id == current_user.id
+    )
+    result = await db.execute(query)
+    collection = result.scalar_one_or_none()
+    
+    if not collection:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="知识库不存在"
+        )
+    
+    # 生成唯一的分享令牌
+    share_token = f"kb_share_{secrets.token_urlsafe(32)}"
+    
+    # 计算过期时间
+    expires_at = None
+    if req.expires_in_days:
+        expires_at = datetime.now(timezone.utc) + timedelta(days=req.expires_in_days)
+    
+    # 创建分享
+    share = CollectionShare(
+        collection_id=collection_id,
+        created_by=current_user.id,
+        share_token=share_token,
+        name=req.name,
+        description=req.description,
+        expires_at=expires_at,
+        search_config=req.search_config or {},
+        is_active=True,
+    )
+    
+    db.add(share)
+    await db.commit()
+    await db.refresh(share)
+    
+    # 构建分享URL
+    share_url = f"{settings.api_base_url}/api/v1/share/{share_token}/search"
+    
+    return CollectionShareResponse(
+        id=share.id,
+        collection_id=share.collection_id,
+        share_token=share.share_token,
+        name=share.name,
+        description=share.description,
+        is_active=share.is_active,
+        expires_at=share.expires_at.isoformat() if share.expires_at else None,
+        usage_count=share.usage_count,
+        last_used_at=share.last_used_at.isoformat() if share.last_used_at else None,
+        search_config=share.search_config,
+        created_at=share.created_at.isoformat(),
+        updated_at=share.updated_at.isoformat(),
+        share_url=share_url,
+    )
+
 

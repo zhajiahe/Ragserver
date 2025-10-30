@@ -53,9 +53,8 @@ class User(Base, TimeMixin):
     # 关联关系
     collections = relationship("Collection", back_populates="user")
     documents = relationship("Document", back_populates="uploader")
-    api_keys = relationship("APIKey", back_populates="user")
     document_chunks = relationship("DocumentChunk", back_populates="user")
-    api_usage_logs = relationship("APIUsageLog", back_populates="user")
+    collection_shares = relationship("CollectionShare", back_populates="creator")
 
     def __repr__(self):
         return f"<User(id={self.id}, username={self.username}, email={self.email})>"
@@ -91,6 +90,7 @@ class Collection(Base, TimeMixin):
     user = relationship("User", back_populates="collections")
     documents = relationship("Document", back_populates="collection", passive_deletes=True)
     chunks = relationship("DocumentChunk", back_populates="collection", passive_deletes=True)
+    shares = relationship("CollectionShare", back_populates="collection", passive_deletes=True)
 
     __table_args__ = (
         Index('idx_kb_user', 'user_id'),
@@ -201,94 +201,40 @@ class DocumentChunk(Base, TimeMixin):
         return f"<DocumentChunk(id={self.id}, document_id={self.document_id}, index={self.chunk_index})>"
 
 
-class APIKey(Base, TimeMixin):
-    """API密钥模型"""
-    __tablename__ = "api_keys"
+class CollectionShare(Base, TimeMixin):
+    """知识库分享模型"""
+    __tablename__ = "collection_shares"
 
     id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id = Column(PGUUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
-    collection_id = Column(PGUUID(as_uuid=True), ForeignKey("collections.id"))  # optional, for KB-specific keys
+    collection_id = Column(PGUUID(as_uuid=True), ForeignKey("collections.id", ondelete='CASCADE'), nullable=False)
+    created_by = Column(PGUUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
 
-    # 基本信息
+    # 分享信息
+    share_token = Column(String(64), unique=True, nullable=False, index=True)  # 格式: kb_share_xxx
     name = Column(String(100), nullable=False)
     description = Column(String(500))
 
-    # 密钥信息（不存储明文）
-    key_hash = Column(String(64), nullable=False)  # SHA256 hash of the full key
-    key_prefix = Column(String(10), nullable=False)  # for display, e.g., "kb_1a2b..."
-    key_suffix = Column(String(10), nullable=False)  # for display, last 4 chars
-
-    # 权限配置
-    scopes = Column(JSONB, default=list)  # ["search", "upload", "read", "delete"]
-
-    # 配额限制
-    rate_limit = Column(Integer, default=60)  # requests per minute
-    daily_quota = Column(Integer, default=10000)  # requests per day
-    monthly_quota = Column(Integer, default=100000)  # requests per month
-    usage_count_today = Column(Integer, default=0)
-    usage_count_month = Column(Integer, default=0)
-
     # 状态信息
     is_active = Column(Boolean, default=True, nullable=False)
-    expires_at = Column(DateTime(timezone=True))  # optional expiration
+    expires_at = Column(DateTime(timezone=True))  # 可选过期时间
+
+    # 使用统计
+    usage_count = Column(Integer, default=0)
     last_used_at = Column(DateTime(timezone=True))
-    last_used_ip = Column(String(45))  # IPv4 or IPv6
 
-    # 安全配置
-    security = Column(JSONB, default=dict)
+    # 搜索配置
+    search_config = Column(JSONB, default=dict)  # top_k限制、过滤条件等
 
     # 关联关系
-    user = relationship("User", back_populates="api_keys")
-    collection = relationship("Collection")
-    usage_logs = relationship("APIUsageLog", back_populates="api_key")
+    collection = relationship("Collection", back_populates="shares")
+    creator = relationship("User", back_populates="collection_shares")
 
     __table_args__ = (
-        Index('idx_ak_user', 'user_id'),
-        Index('idx_ak_kb', 'collection_id'),
-        Index('idx_ak_active', 'is_active'),
-        Index('idx_ak_hash', 'key_hash'),
+        Index('idx_share_token', 'share_token'),
+        Index('idx_share_kb', 'collection_id'),
+        Index('idx_share_creator', 'created_by'),
+        Index('idx_share_active', 'is_active'),
     )
 
     def __repr__(self):
-        return f"<APIKey(id={self.id}, name={self.name}, user_id={self.user_id})>"
-
-
-class APIUsageLog(Base):
-    """API使用日志模型"""
-    __tablename__ = "api_usage_logs"
-
-    id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    api_key_id = Column(PGUUID(as_uuid=True), ForeignKey("api_keys.id"), nullable=False)
-    user_id = Column(PGUUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
-
-    # 请求信息
-    endpoint = Column(String(200), nullable=False)
-    method = Column(String(10), nullable=False)  # GET, POST, etc.
-
-    # 响应信息
-    status_code = Column(Integer, nullable=False)
-    response_time_ms = Column(Integer, nullable=False)
-    error_message = Column(Text)
-
-    # 请求上下文
-    request_body = Column(JSONB)  # optional, for debugging
-    ip_address = Column(String(45), nullable=False)
-    user_agent = Column(String(500))
-
-    # 时间信息
-    created_at = Column(DateTime(timezone=True), default=get_current_time, nullable=False)
-
-    # 关联关系
-    api_key = relationship("APIKey", back_populates="usage_logs")
-    user = relationship("User", back_populates="api_usage_logs")
-
-    __table_args__ = (
-        Index('idx_aul_api_key', 'api_key_id'),
-        Index('idx_aul_user', 'user_id'),
-        Index('idx_aul_endpoint', 'endpoint'),
-        Index('idx_aul_created_at', 'created_at'),
-        Index('idx_aul_status', 'status_code'),
-    )
-
-    def __repr__(self):
-        return f"<APIUsageLog(id={self.id}, endpoint={self.endpoint}, status={self.status_code})>"
+        return f"<CollectionShare(id={self.id}, token={self.share_token}, collection_id={self.collection_id})>"

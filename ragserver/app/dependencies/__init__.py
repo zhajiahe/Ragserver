@@ -8,7 +8,6 @@ from .security import (
     get_current_active_user,
     get_current_superuser,
 )
-from .api_key import api_key_dependency
 
 __all__ = [
     "get_db",
@@ -19,7 +18,6 @@ __all__ = [
     "get_current_user",
     "get_current_active_user",
     "get_current_superuser",
-    "api_key_dependency",
 ]
 
 

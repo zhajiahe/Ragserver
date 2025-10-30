@@ -15,9 +15,9 @@ from ragserver.app.dependencies.db import async_engine
 from ragserver.app.models import Base
 
 # 导入所有 API 路由
-from ragserver.app.api import auth, collections, documents
+from ragserver.app.api import auth, collections, documents, search, parser
 # TODO: 以下路由待实现
-# from ragserver.app.api import files, parser
+# from ragserver.app.api import files
 
 
 @asynccontextmanager
@@ -127,11 +127,14 @@ def create_app() -> FastAPI:
     # 文档管理路由
     app.include_router(documents.router)
     
-    # 文件上传路由
-    # app.include_router(files.router)
+    # 搜索路由
+    app.include_router(search.router)
     
     # 文档解析路由
-    # app.include_router(parser.router)
+    app.include_router(parser.router)
+    
+    # 文件上传路由
+    # app.include_router(files.router)
     
     # ==================== 健康检查端点 ====================
     @app.get("/health", tags=["健康检查"])
