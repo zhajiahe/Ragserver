@@ -113,12 +113,10 @@ class Document(Base, TimeMixin):
     filename = Column(String(255), nullable=False)
     file_type = Column(String(20), nullable=False)  # pdf, docx, txt, html, xlsx, etc.
     file_size = Column(BigInteger, nullable=False)  # bytes
-    file_path = Column(String(500), nullable=False)  # MinIO路径
+    s3_url = Column(String(500), nullable=False)  # MinIO路径
     mime_type = Column(String(100), nullable=False)
     file_hash = Column(String(64), nullable=False)  # SHA256
 
-    # 语言（用于 OCR、分词、分块等策略）
-    language = Column(String(20), default="zh", nullable=False)
 
     content_text = Column(Text) # Markdown格式文本
 

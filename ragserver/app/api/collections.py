@@ -103,7 +103,6 @@ async def list_collections(
             name=c.name,
             description=c.description,
             icon_url=c.icon_url,
-            language=c.language,
             settings=c.settings,
             status=c.status,
             document_count=c.document_count,

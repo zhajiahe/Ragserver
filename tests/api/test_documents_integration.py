@@ -71,15 +71,13 @@ class TestDocumentUpload:
         user, collection, client = authenticated_user_with_kb
 
         # 模拟文件上传
-        files = {
-            "files": ("test.txt", BytesIO(b"Hello World"), "text/plain")
-        }
-        data = {"language": "zh"}
+        files = [
+            ("files", ("test.txt", BytesIO(b"Hello World"), "text/plain"))
+        ]
 
         res = await client.post(
             f"/api/v1/collections/{collection.id}/upload",
             files=files,
-            data=data,
         )
 
         assert res.status_code == 201
@@ -107,12 +105,10 @@ class TestDocumentUpload:
             ("files", ("doc1.txt", BytesIO(b"Content 1"), "text/plain")),
             ("files", ("doc2.pdf", BytesIO(b"Content 2"), "application/pdf")),
         ]
-        data = {"language": "en"}
 
         res = await client.post(
             f"/api/v1/collections/{collection.id}/upload",
             files=files,
-            data=data,
         )
 
         assert res.status_code == 201
@@ -121,12 +117,12 @@ class TestDocumentUpload:
         assert {doc["filename"] for doc in result} == {"doc1.txt", "doc2.pdf"}
 
     @pytest.mark.asyncio
-    async def test_upload_without_auth(self, async_client: AsyncClient, db_session: AsyncSession):
+    async def test_upload_without_auth(self, async_client: AsyncClient, db_session: AsyncSession, setup_db):
         """测试未认证用户上传文档"""
         fake_kb_id = uuid4()
-        files = {
-            "files": ("test.txt", BytesIO(b"Hello"), "text/plain")
-        }
+        files = [
+            ("files", ("test.txt", BytesIO(b"Hello"), "text/plain"))
+        ]
         
         res = await async_client.post(
             f"/api/v1/collections/{fake_kb_id}/upload",
@@ -143,9 +139,9 @@ class TestDocumentUpload:
         user, collection, client = authenticated_user_with_kb
 
         fake_kb_id = uuid4()
-        files = {
-            "files": ("test.txt", BytesIO(b"Hello"), "text/plain")
-        }
+        files = [
+            ("files", ("test.txt", BytesIO(b"Hello"), "text/plain"))
+        ]
 
         res = await client.post(
             f"/api/v1/collections/{fake_kb_id}/upload",
@@ -173,7 +169,7 @@ class TestDocumentList:
                 filename=f"test{i}.txt",
                 file_type="txt",
                 file_size=1000,
-                file_path=f"path/test{i}.txt",
+                s3_url=f"http://minio:9000/documents/path/test{i}.txt",
                 mime_type="text/plain",
                 file_hash=f"hash{i}",
                 status="pending",
@@ -204,7 +200,7 @@ class TestDocumentList:
                 filename=f"test_{status}.txt",
                 file_type="txt",
                 file_size=1000,
-                file_path=f"path/test_{status}.txt",
+                s3_url=f"http://minio:9000/documents/path/test_{status}.txt",
                 mime_type="text/plain",
                 file_hash=f"hash_{status}",
                 status=status,
@@ -237,7 +233,7 @@ class TestDocumentList:
                 filename=f"test{i}.txt",
                 file_type="txt",
                 file_size=1000,
-                file_path=f"path/test{i}.txt",
+                s3_url=f"http://minio:9000/documents/path/test{i}.txt",
                 mime_type="text/plain",
                 file_hash=f"hash{i}",
                 status="pending",
@@ -280,7 +276,7 @@ class TestDocumentDetail:
             filename="detail_test.txt",
             file_type="txt",
             file_size=2048,
-            file_path="path/detail_test.txt",
+            s3_url="http://minio:9000/documents/path/detail_test.txt",
             mime_type="text/plain",
             file_hash="detailhash",
             status="completed",
@@ -327,7 +323,7 @@ class TestDocumentUpdate:
             filename="update_test.txt",
             file_type="txt",
             file_size=1000,
-            file_path="path/update_test.txt",
+            s3_url="http://minio:9000/documents/path/update_test.txt",
             mime_type="text/plain",
             file_hash="updatehash",
             status="pending",
@@ -338,7 +334,7 @@ class TestDocumentUpdate:
 
         update_data = {
             "chunking_config": {"max_chunk_size": 500},
-            "language": "en",
+            "meta": {"language": "en"},
         }
 
         res = await client.put(f"/api/v1/documents/{doc.id}", json=update_data)
@@ -346,7 +342,7 @@ class TestDocumentUpdate:
         assert res.status_code == 200
         result = res.json()
         assert result["chunking_config"] == {"max_chunk_size": 500}
-        assert result["language"] == "en"
+        assert result["meta"]["language"] == "en"
 
 
 class TestDocumentDelete:
@@ -368,7 +364,7 @@ class TestDocumentDelete:
                 filename=f"delete{i}.txt",
                 file_type="txt",
                 file_size=1000,
-                file_path=f"path/delete{i}.txt",
+                s3_url=f"http://minio:9000/documents/path/delete{i}.txt",
                 mime_type="text/plain",
                 file_hash=f"deletehash{i}",
                 status="pending",
@@ -429,7 +425,7 @@ class TestDocumentProcess:
             filename="process.txt",
             file_type="txt",
             file_size=1000,
-            file_path="path/process.txt",
+            s3_url="http://minio:9000/documents/path/process.txt",
             mime_type="text/plain",
             file_hash="processhash",
             status="pending",
@@ -466,7 +462,7 @@ class TestDocumentProcess:
             filename="reprocess.txt",
             file_type="txt",
             file_size=1000,
-            file_path="path/reprocess.txt",
+            s3_url="http://minio:9000/documents/path/reprocess.txt",
             mime_type="text/plain",
             file_hash="reprocesshash",
             status="completed",
@@ -507,7 +503,7 @@ class TestDocumentStatus:
             filename="status.txt",
             file_type="txt",
             file_size=1000,
-            file_path="path/status.txt",
+            s3_url="http://minio:9000/documents/path/status.txt",
             mime_type="text/plain",
             file_hash="statushash",
             status="processing",
@@ -544,7 +540,7 @@ class TestDocumentChunks:
             filename="chunks.txt",
             file_type="txt",
             file_size=1000,
-            file_path="path/chunks.txt",
+            s3_url="http://minio:9000/documents/path/chunks.txt",
             mime_type="text/plain",
             file_hash="chunkshash",
             status="completed",
@@ -589,7 +585,7 @@ class TestDocumentChunks:
             filename="chunks_page.txt",
             file_type="txt",
             file_size=1000,
-            file_path="path/chunks_page.txt",
+            s3_url="http://minio:9000/documents/path/chunks_page.txt",
             mime_type="text/plain",
             file_hash="chunkshashpage",
             status="completed",
@@ -655,7 +651,7 @@ class TestDocumentPermissions:
             filename="user2doc.txt",
             file_type="txt",
             file_size=1000,
-            file_path="path/user2doc.txt",
+            s3_url="http://minio:9000/documents/path/user2doc.txt",
             mime_type="text/plain",
             file_hash="user2hash",
             status="pending",

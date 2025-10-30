@@ -15,6 +15,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ragserver.app.dependencies import get_db, get_current_active_user
 from ragserver.app.models import Document, Collection, DocumentChunk, User
 from ragserver.app.utils.date_util import get_current_time
+from ragserver.app.utils.minio_client import minio_client
+from ragserver.config import settings
 
 router = APIRouter(tags=["文档管理"])
 
@@ -26,7 +28,6 @@ class DocumentBase(BaseModel):
     filename: str = Field(..., description="文件名")
     file_type: str = Field(..., description="文件类型")
     file_size: int = Field(..., description="文件大小（字节）")
-    language: str = Field(default="zh", description="文档语言")
     meta: Optional[dict] = Field(default_factory=dict, description="元数据")
 
 
@@ -39,7 +40,6 @@ class DocumentUpdate(BaseModel):
     """文档更新模型"""
     chunking_config: Optional[dict] = Field(None, description="分块配置")
     meta: Optional[dict] = Field(None, description="元数据")
-    language: Optional[str] = Field(None, description="文档语言")
 
 
 class DocumentResponse(BaseModel):
@@ -52,10 +52,9 @@ class DocumentResponse(BaseModel):
     filename: str
     file_type: str
     file_size: int
-    file_path: str
+    s3_url: str
     mime_type: str
     file_hash: str
-    language: str
     status: str
     progress: int
     error_message: Optional[str]
@@ -205,15 +204,12 @@ async def get_documents(
 async def upload_documents(
     collection_id: UUID,
     files: List[UploadFile] = File(...),
-    language: Optional[str] = Form("zh"),
     current_user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db),
 ):
     """
     上传文档到指定知识库（支持批量上传）
     
-    TODO: 实现实际的文件上传逻辑（MinIO）和异步任务队列
-    当前为 Mock 实现，返回pending状态的文档记录
     """
     # 验证权限
     collection = await verify_collection_access(db, collection_id, current_user.id)
@@ -221,24 +217,20 @@ async def upload_documents(
     created_documents = []
     
     for file in files:
-        # TODO: 实现以下功能
-        # 1. 验证文件类型和大小
-        # 2. 计算文件哈希（SHA256）
-        # 3. 上传到 MinIO
-        # 4. 创建数据库记录
-        # 5. 触发异步解析任务
-        
-        # Mock 实现：创建pending状态的文档记录
+        minio_info = await minio_client.upload_file(
+            bucket_name=settings.minio_bucket_documents,
+            file=file.file,
+            file_name=file.filename or "unknown.txt",
+        )
         document = Document(
             collection_id=collection_id,
             uploaded_by=current_user.id,
-            filename=file.filename or "unknown.txt",
-            file_type=file.filename.split('.')[-1] if file.filename and '.' in file.filename else "txt",
-            file_size=0,  # TODO: 实际读取文件大小
-            file_path=f"mock/path/{file.filename}",  # TODO: 实际MinIO路径
-            mime_type=file.content_type or "application/octet-stream",
-            file_hash="mock_hash_" + str(UUID),  # TODO: 实际计算SHA256
-            language=language,
+            filename=minio_info['filename'],
+            file_type=minio_info['file_type'],
+            file_size=minio_info['file_size'],
+            s3_url=minio_info['s3_url'],
+            mime_type=minio_info['mime_type'],
+            file_hash=minio_info['file_hash'],
             status="pending",
             progress=0,
         )
