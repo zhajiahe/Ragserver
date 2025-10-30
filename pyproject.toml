@@ -41,6 +41,7 @@ dependencies = [
     "aioboto3>=15.4.0",
     "loguru>=0.7.3",
     "python-magic>=0.4.27",
+    "alembic>=1.17.1",
 ]
 
 [project.packages]

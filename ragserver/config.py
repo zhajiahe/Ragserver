@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     app_version: str = Field(default="1.0.0", description="应用版本")
     debug: bool = Field(default=True, description="调试模式")
     log_level: str = Field(default="INFO", description="日志级别")
+    api_port: int = Field(default=8000, description="API 端口")
     
     # ==================== 数据库配置 ====================
     # PostgreSQL 配置

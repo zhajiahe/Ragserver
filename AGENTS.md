@@ -242,35 +242,6 @@ async def search_chunks(
     return result.all()
 ```
 
-## 常见任务
-
-### 添加新的 API 端点
-
-1. 在 `app/schemas.py` 中定义请求/响应模式
-2. 在 `app/services/` 中实现业务逻辑
-3. 在 `app/api/v1/` 中创建路由
-4. 在 `app/main.py` 中注册路由
-5. 编写单元测试
-
-### 添加新的异步任务
-
-1. 在 `app/tasks.py` 中定义任务函数
-2. 使用 `@broker.task` 装饰器
-3. 在需要的地方调用 `task.kiq(...)`
-
-### 修改数据模型
-
-1. 在 `app/models.py` 中修改模型
-2. 创建 Alembic 迁移: `make migrate msg="描述"`
-3. 应用迁移: `make upgrade`
-4. 更新 `ER_SIMPLE.md` 文档
-
-### 添加新的配置项
-
-1. 在 `ragserver/config.py` 的 `Settings` 类中添加字段
-2. 在 `env.example` 中添加配置项及说明
-3. 在 `CONFIG_README.md` 中更新文档
-
 ## 错误处理
 
 ```python
@@ -346,82 +317,6 @@ await redis_client.setex(
 )
 ```
 
-## 测试指南
-
-### 单元测试
-
-```python
-# tests/test_kb.py
-import pytest
-from httpx import AsyncClient
-
-@pytest.mark.asyncio
-async def test_create_kb(client: AsyncClient, auth_headers):
-    response = await client.post(
-        "/api/v1/collections",
-        json={"name": "Test KB", "description": "Test"},
-        headers=auth_headers
-    )
-    assert response.status_code == 201
-    data = response.json()
-    assert data["name"] == "Test KB"
-```
-
-### 运行测试
-
-```bash
-# 运行所有测试
-make test
-
-# 运行特定测试
-pytest tests/test_kb.py::test_create_kb -v
-
-# 生成覆盖率报告
-make test-cov
-```
-
-## 常见陷阱
-
-### ❌ 忘记数据隔离
-
-```python
-# 错误：可能泄露其他用户的数据
-result = await db.execute(select(Document).where(Document.id == doc_id))
-
-# 正确：始终过滤 user_id
-result = await db.execute(
-    select(Document).where(
-        Document.id == doc_id,
-        Document.uploaded_by == current_user.id
-    )
-)
-```
-
-### ❌ 在异步函数中使用同步 I/O
-
-```python
-# 错误：阻塞事件循环
-def process_file(file_path: str):
-    with open(file_path, 'r') as f:  # 同步 I/O
-        return f.read()
-
-# 正确：使用异步 I/O 或线程池
-async def process_file(file_path: str):
-    async with aiofiles.open(file_path, 'r') as f:
-        return await f.read()
-```
-
-### ❌ 硬编码向量维度
-
-```python
-# 错误
-embedding = Vector(1536)  # 硬编码
-
-# 正确
-from ragserver.config import settings
-embedding = Vector(settings.embedding_dimension)
-```
-
 ## 环境设置
 
 ```bash
@@ -429,7 +324,7 @@ embedding = Vector(settings.embedding_dimension)
 cp env.example .env
 
 # 2. 编辑配置（填入API密钥等）
-vi .env
+vim .env
 
 # 3. 安装依赖
 make install
@@ -474,8 +369,7 @@ make docker-clean     # 清理 Docker 数据
 ## 文档参考
 
 - `PRD.md` - 产品需求文档
-- `ER_SIMPLE.md` - 数据模型文档
-- `CONFIG_README.md` - 配置管理文档
+- `ER.md` - 数据模型文档
 - `Makefile` - 构建命令
 - `ragserver/config.py` - 配置定义
 
@@ -484,15 +378,4 @@ make docker-clean     # 清理 Docker 数据
 1. 查看文档：上述参考文档
 2. 查看代码注释：所有关键函数都有详细注释
 3. 运行 `make help` 查看可用命令
-
----
-
-**重要提示**: 
-- 始终确保数据隔离（按 `user_id` 过滤）
-- 使用异步编程模式
-- 遵循类型提示
-- 编写测试
-- 更新文档
-
-Happy Coding! 🚀
 
