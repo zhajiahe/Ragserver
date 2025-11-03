@@ -11,9 +11,10 @@ from sklearn.metrics.pairwise import cosine_similarity
 class BaseChunker(ABC):
     """文本分割器基类，提供公共的工具方法"""
 
-    def __init__(self, chunk_size: int = 1000, chunk_overlap: int = 200):
+    def __init__(self, chunk_size: int = 1000, chunk_overlap: int = 200, min_chunk_size: int = 100):
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
+        self.min_chunk_size = min_chunk_size
 
     @abstractmethod
     async def split_text(self, text: str) -> List[Dict[str, Any]]:
@@ -60,20 +61,27 @@ class BaseChunker(ABC):
 
         return " ".join(overlap_sentences)
 
-    @staticmethod
-    def _format_chunks(chunks: List[str]) -> List[Dict[str, Any]]:
-        """格式化块结果为统一格式"""
-        return [
-            {
+    def _format_chunks(self, chunks: List[str]) -> List[Dict[str, Any]]:
+        """格式化块结果为统一格式，并过滤掉太小的块"""
+        formatted_chunks = []
+        chunk_index = 0
+        
+        for chunk in chunks:
+            # 跳过小于最小块大小的块（除非是最后一块）
+            if len(chunk.strip()) < self.min_chunk_size and chunk != chunks[-1]:
+                continue
+                
+            formatted_chunks.append({
                 "content": chunk,
                 "metadata": {
-                    "chunk_index": i,
+                    "chunk_index": chunk_index,
                     "chunk_size": len(chunk),
                     "char_count": len(chunk)
                 }
-            }
-            for i, chunk in enumerate(chunks)
-        ]
+            })
+            chunk_index += 1
+        
+        return formatted_chunks if formatted_chunks else [{"content": chunks[0] if chunks else "", "metadata": {"chunk_index": 0, "chunk_size": 0, "char_count": 0}}]
 
     def _add_overlap(self, chunks: List[str]) -> List[str]:
         """添加块之间的重叠"""
@@ -101,16 +109,17 @@ class BaseChunker(ABC):
 class RecursiveCharacterChunker(BaseChunker):
     """递归字符文本分割器"""
 
-    def __init__(self, chunk_size=1000, chunk_overlap=200, separators=None):
+    def __init__(self, chunk_size=1000, chunk_overlap=200, min_chunk_size=100, separators=None):
         """
         初始化递归字符文本分割器
 
         参数:
             chunk_size: 块大小（字符数）
             chunk_overlap: 块重叠大小（字符数）
+            min_chunk_size: 最小块大小（字符数）
             separators: 分隔符列表，按优先级排序，如果为None则使用默认设置
         """
-        super().__init__(chunk_size, chunk_overlap)
+        super().__init__(chunk_size, chunk_overlap, min_chunk_size)
 
         # 默认分隔符，按优先级排序
         self.separators = separators or [
@@ -271,16 +280,17 @@ class RecursiveCharacterChunker(BaseChunker):
 class Bm25TextChunker(BaseChunker):
     """基于BM25的语义文本分割器"""
     
-    def __init__(self, chunk_size=1000, chunk_overlap=200, similarity_threshold=0.3):
+    def __init__(self, chunk_size=1000, chunk_overlap=200, min_chunk_size=100, similarity_threshold=0.3):
         """
         初始化BM25文本分割器
 
         参数:
             chunk_size: 块大小（字符数）
             chunk_overlap: 块重叠大小（字符数）
+            min_chunk_size: 最小块大小（字符数）
             similarity_threshold: 相似度阈值，用于判断是否合并段落
         """
-        super().__init__(chunk_size, chunk_overlap)
+        super().__init__(chunk_size, chunk_overlap, min_chunk_size)
         self.similarity_threshold = similarity_threshold
 
     async def split_text(self, text: str) -> List[Dict[str, Any]]:
@@ -571,6 +581,9 @@ class ChunkerFactory:
                 - "bm25": BM25语义分块
                 - "semantic": 向量语义分块
             config: 分块配置
+                - max_chunk_size: 最大块大小（默认1000）
+                - min_chunk_size: 最小块大小（默认100）
+                - chunk_overlap: 块重叠大小（默认200）
 
         Returns:
             BaseChunker: 分块器实例
@@ -580,12 +593,14 @@ class ChunkerFactory:
         """
         chunk_size = config.get("max_chunk_size", 1000)
         chunk_overlap = config.get("chunk_overlap", 200)
+        min_chunk_size = config.get("min_chunk_size", 100)
 
         if strategy_type == "recursive":
             separators = config.get("separators", None)
             return RecursiveCharacterChunker(
                 chunk_size=chunk_size,
                 chunk_overlap=chunk_overlap,
+                min_chunk_size=min_chunk_size,
                 separators=separators
             )
 
@@ -594,12 +609,12 @@ class ChunkerFactory:
             return Bm25TextChunker(
                 chunk_size=chunk_size,
                 chunk_overlap=chunk_overlap,
+                min_chunk_size=min_chunk_size,
                 similarity_threshold=similarity_threshold
             )
 
         elif strategy_type == "semantic":
             similarity_threshold = config.get("similarity_threshold", 0.7)
-            min_chunk_size = config.get("min_chunk_size", 100)
             breakpoint_threshold_type = config.get("breakpoint_threshold_type", "percentile")
 
             return SemanticChunker(
