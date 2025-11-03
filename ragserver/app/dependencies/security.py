@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ragserver.config import settings
 from ragserver.app.models import User
 from .db import get_db
+from ragserver.app.utils.date_util import get_current_time
 
 
 # 使用 bcrypt 进行密码哈希和验证
@@ -55,7 +56,7 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
 
 
 def create_access_token(subject: str, expires_delta: Optional[timedelta] = None) -> str:
-    expire = datetime.now(timezone.utc) + (
+    expire = get_current_time() + (
         expires_delta or timedelta(minutes=settings.jwt_access_token_expire_minutes)
     )
     to_encode = {"sub": subject, "exp": expire}

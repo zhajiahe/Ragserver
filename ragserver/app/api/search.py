@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ragserver.app.dependencies import get_db, get_current_active_user
 from ragserver.app.models import Collection, User, CollectionShare, DocumentChunk
 from ragserver.config import settings
+from ragserver.app.utils.date_util import get_current_time
 
 router = APIRouter(tags=["搜索"])
 
@@ -118,7 +119,7 @@ async def search_by_share_token(
         )
     
     # 检查是否过期
-    if share.expires_at and share.expires_at < datetime.utcnow():
+    if share.expires_at and share.expires_at < get_current_time():
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="分享链接已过期"
@@ -132,7 +133,7 @@ async def search_by_share_token(
     
     # 更新使用统计
     share.usage_count += 1
-    share.last_used_at = datetime.utcnow()
+    share.last_used_at = get_current_time()
     await db.commit()
     
     # TODO: 实现向量搜索逻辑

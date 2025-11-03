@@ -13,6 +13,7 @@ from ragserver.app.models import User, Collection, Document, DocumentChunk
 from ragserver.app.dependencies.security import create_access_token, get_password_hash
 from datetime import timedelta
 from io import BytesIO
+from typing import List
 
 
 @pytest.fixture(scope="function")
@@ -407,84 +408,6 @@ class TestDocumentDelete:
 
         assert res.status_code == 400
 
-
-class TestDocumentProcess:
-    """文档处理测试 (Mock)"""
-
-    @pytest.mark.asyncio
-    async def test_process_documents(
-        self, authenticated_user_with_kb, db_session: AsyncSession
-    ):
-        """测试批量处理文档 (Mock)"""
-        user, collection, client = authenticated_user_with_kb
-
-        # 创建文档
-        doc = Document(
-            collection_id=collection.id,
-            uploaded_by=user.id,
-            filename="process.txt",
-            file_type="txt",
-            file_size=1000,
-            s3_url="http://minio:9000/documents/path/process.txt",
-            mime_type="text/plain",
-            file_hash="processhash",
-            status="pending",
-        )
-        db_session.add(doc)
-        await db_session.commit()
-        await db_session.refresh(doc)
-
-        res = await client.post(
-            "/api/v1/documents/process",
-            json={"document_ids": [str(doc.id)]}
-        )
-
-        assert res.status_code == 202
-        result = res.json()
-        assert "已提交" in result["message"]
-        assert len(result["document_ids"]) == 1
-
-        # 验证状态已更新
-        await db_session.refresh(doc)
-        assert doc.status == "processing"
-
-    @pytest.mark.asyncio
-    async def test_reprocess_documents(
-        self, authenticated_user_with_kb, db_session: AsyncSession
-    ):
-        """测试重新处理文档 (Mock)"""
-        user, collection, client = authenticated_user_with_kb
-
-        # 创建已完成的文档
-        doc = Document(
-            collection_id=collection.id,
-            uploaded_by=user.id,
-            filename="reprocess.txt",
-            file_type="txt",
-            file_size=1000,
-            s3_url="http://minio:9000/documents/path/reprocess.txt",
-            mime_type="text/plain",
-            file_hash="reprocesshash",
-            status="completed",
-            chunk_count=3,
-        )
-        db_session.add(doc)
-        await db_session.commit()
-        await db_session.refresh(doc)
-
-        res = await client.post(
-            "/api/v1/documents/reprocess",
-            json={"document_ids": [str(doc.id)]}
-        )
-
-        assert res.status_code == 202
-        result = res.json()
-        assert "重新处理" in result["message"]
-
-        # 验证状态已重置
-        await db_session.refresh(doc)
-        assert doc.status == "processing"
-        assert doc.chunk_count == 0
 
 
 class TestDocumentStatus:

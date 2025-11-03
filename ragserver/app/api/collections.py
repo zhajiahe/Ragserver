@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ragserver.app.dependencies import get_db, get_current_active_user
 from ragserver.app.models import Collection, User, CollectionShare
 from ragserver.config import settings
+from ragserver.app.utils.date_util import get_current_time
 
 router = APIRouter(prefix="/api/v1/collections", tags=["知识库管理"])
 
@@ -464,9 +465,7 @@ async def create_share(
     share_token = f"kb_share_{secrets.token_urlsafe(32)}"
     
     # 计算过期时间
-    expires_at = None
-    if req.expires_in_days:
-        expires_at = datetime.now(timezone.utc) + timedelta(days=req.expires_in_days)
+    expires_at = get_current_time() + timedelta(days=req.expires_in_days)
     
     # 创建分享
     share = CollectionShare(

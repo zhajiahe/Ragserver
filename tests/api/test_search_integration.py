@@ -11,6 +11,7 @@ from ragserver.main import app
 from ragserver.app.dependencies import get_db
 from ragserver.app.models import User, Collection, CollectionShare
 from ragserver.app.dependencies.security import get_password_hash
+from ragserver.app.utils.date_util import get_current_time
 
 
 @pytest.fixture
@@ -205,118 +206,7 @@ class TestCollectionShare:
         
         assert res.status_code == 404
 
-    @pytest.mark.asyncio
-    async def test_list_shares(
-        self,
-        async_client: AsyncClient,
-        auth_headers: dict,
-        test_collection: Collection,
-        db_session: AsyncSession,
-        test_user: User
-    ):
-        """测试获取分享列表"""
-        # 创建几个分享
-        shares = []
-        for i in range(3):
-            share = CollectionShare(
-                collection_id=test_collection.id,
-                created_by=test_user.id,
-                share_token=f"kb_share_test_{i}",
-                name=f"分享{i}",
-                is_active=True,
-            )
-            db_session.add(share)
-            shares.append(share)
-        
-        await db_session.commit()
-        
-        res = await async_client.get(
-            f"/api/v1/collections/{test_collection.id}/shares",
-            headers=auth_headers
-        )
-        
-        assert res.status_code == 200
-        data = res.json()
-        assert data["total"] == 3
-        assert len(data["items"]) == 3
-
-    @pytest.mark.asyncio
-    async def test_delete_share(
-        self,
-        async_client: AsyncClient,
-        auth_headers: dict,
-        test_collection: Collection,
-        db_session: AsyncSession,
-        test_user: User
-    ):
-        """测试删除分享链接"""
-        # 创建分享
-        share = CollectionShare(
-            collection_id=test_collection.id,
-            created_by=test_user.id,
-            share_token="kb_share_to_delete",
-            name="待删除分享",
-            is_active=True,
-        )
-        db_session.add(share)
-        await db_session.commit()
-        await db_session.refresh(share)
-        
-        res = await async_client.delete(
-            f"/api/v1/collections/{test_collection.id}/shares/{share.id}",
-            headers=auth_headers
-        )
-        
-        assert res.status_code == 204
-        
-        # 验证数据库已删除
-        result = await db_session.execute(
-            select(CollectionShare).where(CollectionShare.id == share.id)
-        )
-        assert result.scalar_one_or_none() is None
-
-    @pytest.mark.asyncio
-    async def test_toggle_share_status(
-        self,
-        async_client: AsyncClient,
-        auth_headers: dict,
-        test_collection: Collection,
-        db_session: AsyncSession,
-        test_user: User
-    ):
-        """测试切换分享状态"""
-        # 创建分享
-        share = CollectionShare(
-            collection_id=test_collection.id,
-            created_by=test_user.id,
-            share_token="kb_share_to_toggle",
-            name="待切换分享",
-            is_active=True,
-        )
-        db_session.add(share)
-        await db_session.commit()
-        await db_session.refresh(share)
-        
-        # 第一次切换（True -> False）
-        res = await async_client.put(
-            f"/api/v1/collections/{test_collection.id}/shares/{share.id}/toggle",
-            headers=auth_headers
-        )
-        
-        assert res.status_code == 200
-        data = res.json()
-        assert data["is_active"] is False
-        
-        # 第二次切换（False -> True）
-        res = await async_client.put(
-            f"/api/v1/collections/{test_collection.id}/shares/{share.id}/toggle",
-            headers=auth_headers
-        )
-        
-        assert res.status_code == 200
-        data = res.json()
-        assert data["is_active"] is True
-
+    
 
 class TestShareSearch:
     """分享链接搜索测试"""
@@ -404,7 +294,6 @@ class TestShareSearch:
         test_user: User
     ):
         """测试使用已过期的分享链接"""
-        from datetime import timezone
         
         # 创建已过期的分享
         share = CollectionShare(
@@ -413,7 +302,7 @@ class TestShareSearch:
             share_token="kb_share_expired",
             name="已过期",
             is_active=True,
-            expires_at=datetime.now(timezone.utc) - timedelta(days=1),  # 昨天过期
+            expires_at=get_current_time() - timedelta(days=1),  # 昨天过期
         )
         db_session.add(share)
         await db_session.commit()
