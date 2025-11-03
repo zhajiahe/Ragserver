@@ -402,103 +402,99 @@ class TestChunkTextFunction:
         assert len(chunks) > 0
 
 
-class TestFullExampleFile:
-    """测试完整的example.txt文件"""
+class TestMinChunkSize:
+    """测试最小块大小参数"""
 
     @pytest.mark.asyncio
-    async def test_full_example_file(self):
-        """测试完整的example.txt文件，打印前20个块"""
-        # 读取完整文件
-        with open(TEST_FILE, "r", encoding="utf-8") as f:
-            full_text = f.read()
+    async def test_recursive_min_size(self, short_text: str):
+        """测试递归分块器的最小块大小"""
+        min_size = 50
+        
+        chunker = RecursiveCharacterChunker(
+            chunk_size=500,
+            chunk_overlap=50,
+            min_chunk_size=min_size
+        )
+        
+        chunks = await chunker.split_text(short_text)
+        
+        print(f"\n递归分块器 (min_chunk_size={min_size}):")
+        print(f"  总块数: {len(chunks)}")
+        
+        # 验证所有块（除了可能的最后一块）都满足最小大小要求
+        for i, chunk in enumerate(chunks[:-1]):
+            content_len = len(chunk["content"].strip())
+            assert content_len >= min_size, f"块 {i+1} 太小: {content_len} < {min_size}"
+        
+        assert len(chunks) > 0
 
-        print(f"\n\n{'='*80}")
-        print(f"完整 example.txt 文件测试")
-        print(f"{'='*80}")
-        print(f"\n原始文件长度: {len(full_text):,} 字符")
+    @pytest.mark.asyncio
+    async def test_bm25_min_size(self, short_text: str):
+        """测试BM25分块器的最小块大小"""
+        min_size = 50
+        
+        chunker = Bm25TextChunker(
+            chunk_size=500,
+            chunk_overlap=50,
+            min_chunk_size=min_size,
+            similarity_threshold=0.3
+        )
+        
+        chunks = await chunker.split_text(short_text)
+        
+        print(f"\nBM25分块器 (min_chunk_size={min_size}):")
+        print(f"  总块数: {len(chunks)}")
+        
+        for i, chunk in enumerate(chunks[:-1]):
+            content_len = len(chunk["content"].strip())
+            assert content_len >= min_size, f"块 {i+1} 太小: {content_len} < {min_size}"
+        
+        assert len(chunks) > 0
 
-        base_config = {
-            "max_chunk_size": 800,
-            "chunk_overlap": 200
-        }
-
-        # 测试三种策略
-        strategies = [
-            ("recursive", "递归字符分块", {}),
-            ("bm25", "BM25语义分块", {"similarity_threshold": 0.3}),
-            ("semantic", "向量语义分块", {
-                "similarity_threshold": 0.7,
-                "min_chunk_size": 100,
-                "breakpoint_threshold_type": "percentile"
-            })
-        ]
-
-        all_results = {}
-
-        for strategy_type, strategy_name, extra_config in strategies:
-            print(f"\n{'-'*80}")
-            print(f"策略: {strategy_name} ({strategy_type})")
-            print(f"{'-'*80}")
-
-            config = {
-                "strategy_type": strategy_type,
-                "config": {**base_config, **extra_config}
+    @pytest.mark.asyncio
+    async def test_factory_min_size(self, short_text: str):
+        """测试工厂方法支持最小块大小"""
+        min_size = 60
+        
+        config = {
+            "strategy_type": "recursive",
+            "config": {
+                "max_chunk_size": 500,
+                "chunk_overlap": 50,
+                "min_chunk_size": min_size
             }
+        }
+        
+        chunks = await chunk_text(short_text, config)
+        
+        print(f"\n工厂方法 (min_chunk_size={min_size}):")
+        print(f"  总块数: {len(chunks)}")
+        
+        for i, chunk in enumerate(chunks[:-1]):
+            content_len = len(chunk["content"].strip())
+            assert content_len >= min_size, f"块 {i+1} 太小: {content_len} < {min_size}"
+        
+        assert len(chunks) > 0
 
-            try:
-                chunks = await chunk_text(full_text, config)
-
-                # 统计信息
-                chunk_sizes = [len(c['content']) for c in chunks]
-                total_chunks = len(chunks)
-                avg_size = sum(chunk_sizes) / total_chunks if total_chunks > 0 else 0
-                min_size = min(chunk_sizes) if chunk_sizes else 0
-                max_size = max(chunk_sizes) if chunk_sizes else 0
-
-                all_results[strategy_name] = {
-                    "chunks": chunks,
-                    "total": total_chunks,
-                    "avg": avg_size,
-                    "min": min_size,
-                    "max": max_size
-                }
-
-                print(f"\n📊 统计信息:")
-                print(f"  总块数: {total_chunks}")
-                print(f"  平均大小: {avg_size:.0f} 字符")
-                print(f"  最小块: {min_size} 字符")
-                print(f"  最大块: {max_size} 字符")
-
-                # 打印前20个块
-                print(f"\n📝 前20个块内容:")
-                for i, chunk in enumerate(chunks[:20], 1):
-                    content = chunk['content']
-                    preview = content[:100].replace('\n', ' ').strip()
-                    if len(content) > 100:
-                        preview += "..."
-
-                    print(f"\n  [{i:2d}] 大小: {len(content):4d} 字符")
-                    print(f"       内容: {preview}")
-
-                assert total_chunks > 0
-
-            except Exception as e:
-                print(f"\n❌ 错误: {str(e)}")
-                if strategy_type != "semantic":
-                    raise
-
-        # 打印对比总结
-        print(f"\n\n{'='*80}")
-        print(f"分块策略对比总结")
-        print(f"{'='*80}")
-        print(f"\n原始文件: {len(full_text):,} 字符\n")
-
-        for strategy_name, result in all_results.items():
-            print(f"{strategy_name}:")
-            print(f"  块数: {result['total']}")
-            print(f"  平均: {result['avg']:.0f} 字符")
-            print(f"  范围: {result['min']} ~ {result['max']} 字符")
-            print()
+    @pytest.mark.asyncio
+    async def test_different_min_sizes(self):
+        """测试不同的最小块大小配置"""
+        text = "短。\n\n中等长度的段落。\n\n这是一个更长的段落，包含了足够多的文本内容。"
+        
+        min_sizes = [10, 20, 30]
+        
+        print(f"\n测试不同的 min_chunk_size:")
+        
+        for min_size in min_sizes:
+            chunker = RecursiveCharacterChunker(
+                chunk_size=200,
+                chunk_overlap=20,
+                min_chunk_size=min_size
+            )
+            
+            chunks = await chunker.split_text(text)
+            print(f"  min={min_size}: {len(chunks)} 块")
+            assert len(chunks) > 0
 
 
 class TestCompareStrategies:
