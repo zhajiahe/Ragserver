@@ -13,15 +13,19 @@ from ragserver.config import settings
 class LLMService:
     """LLM 文本生成服务"""
     
-    def __init__(self):
+    def __init__(self, 
+            model: str = settings.siliconflow_llm_model, 
+            temperature: float = settings.siliconflow_llm_temperature, 
+            max_tokens: int = settings.siliconflow_llm_max_tokens
+            ):
         """初始化 SiliconFlow OpenAI 兼容客户端"""
         self.client = AsyncOpenAI(
             api_key=settings.siliconflow_api_key,
-            base_url=settings.siliconflow_api_base,
+            base_url=settings.siliconflow_api_base
         )
-        self.model = settings.siliconflow_llm_model
-        self.temperature = settings.siliconflow_llm_temperature
-        self.max_tokens = settings.siliconflow_llm_max_tokens
+        self.model = model
+        self.temperature = temperature
+        self.max_tokens = max_tokens
         logger.info(f"LLMService initialized with model: {self.model}")
     
     async def chat(

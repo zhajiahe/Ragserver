@@ -48,6 +48,8 @@ dependencies = [
     "pandas>=2.3.3",
     "openpyxl>=3.1.5",
     "scikit-learn>=1.7.2",
+    "img2pdf>=0.6.1",
+    "pymupdf>=1.26.5",
 ]
 
 [project.packages]

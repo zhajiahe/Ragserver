@@ -17,7 +17,6 @@ from langchain_text_splitters import (
     RecursiveCharacterTextSplitter,
     MarkdownHeaderTextSplitter,
 )
-from openai import AsyncOpenAI
 
 from ragserver.tasks import broker
 from ragserver.app.models import Document, DocumentChunk, Collection
