@@ -27,7 +27,8 @@ class LLMService:
         self.temperature = temperature
         self.max_tokens = max_tokens
         logger.info(f"LLMService initialized with model: {self.model}")
-    
+
+
     async def chat(
         self,
         messages: List[Dict[str, str]],

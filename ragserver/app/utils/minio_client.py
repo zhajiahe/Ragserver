@@ -8,7 +8,7 @@ from contextlib import asynccontextmanager
 from io import BytesIO
 from datetime import datetime
 import magic
-
+import asyncio
 
 class AsyncMinioClient:
     def __init__(self):
@@ -17,6 +17,7 @@ class AsyncMinioClient:
         self.access_key = settings.minio_access_key
         self.secret_key = settings.minio_secret_key
         self._initialized = False
+        asyncio.run(self._initialize_once())
     
     @asynccontextmanager
     async def _get_client(self):
@@ -30,8 +31,14 @@ class AsyncMinioClient:
         ) as client:
             yield client
     
-    async def _ensure_bucket(self, client, bucket_name: str):
-        """确保单个桶存在"""
+    async def _ensure_bucket(self, client, bucket_name: str, public: bool = False):
+        """确保单个桶存在，并可选设置为公开访问
+        
+        Args:
+            client: S3 客户端
+            bucket_name: 桶名称
+            public: 是否设置为公开读取
+        """
         try:
             await client.head_bucket(Bucket=bucket_name)
             logger.info(f"Bucket {bucket_name} already exists")
@@ -43,6 +50,29 @@ class AsyncMinioClient:
             else:
                 logger.error(f"Error with bucket {bucket_name}: {e}")
                 raise
+        
+        # 如果需要公开访问，设置桶策略
+        if public:
+            import json
+            policy = {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Effect": "Allow",
+                        "Principal": {"AWS": "*"},
+                        "Action": ["s3:GetObject"],
+                        "Resource": [f"arn:aws:s3:::{bucket_name}/*"]
+                    }
+                ]
+            }
+            try:
+                await client.put_bucket_policy(
+                    Bucket=bucket_name,
+                    Policy=json.dumps(policy)
+                )
+                logger.info(f"Set public read policy for bucket {bucket_name}")
+            except ClientError as e:
+                logger.warning(f"Failed to set public policy for {bucket_name}: {e}")
     
     async def _initialize_once(self):
         """首次调用时初始化桶"""
@@ -50,7 +80,7 @@ class AsyncMinioClient:
             async with self._get_client() as client:
                 await self._ensure_bucket(client, settings.minio_bucket_documents)
                 await self._ensure_bucket(client, settings.minio_bucket_avatars)
-                await self._ensure_bucket(client, settings.minio_bucket_temp)
+                await self._ensure_bucket(client, settings.minio_bucket_temp, public=True)
             self._initialized = True
             logger.info("Async MinIO client initialized")
     
@@ -123,10 +153,9 @@ class AsyncMinioClient:
                 'upload_time': '上传时间'
             }
         """
-        await self._initialize_once()
         
         # 读取文件内容
-        file_content = file.read()
+        file_content = file.read()      
         file.seek(0)  # 重置文件指针
         
         # 计算哈希值
@@ -214,7 +243,6 @@ class AsyncMinioClient:
                 'metadata': {...}
             } 或 None（文件不存在）
         """
-        await self._initialize_once()
         
         object_key = self._generate_object_key(md5_hash, extension)
         
@@ -246,7 +274,6 @@ class AsyncMinioClient:
         extension: str = ''
     ):
         """通过 MD5 下载文件"""
-        await self._initialize_once()
         
         object_key = self._generate_object_key(md5_hash, extension)
         
@@ -255,7 +282,6 @@ class AsyncMinioClient:
     
     async def download_file(self, bucket_name: str, file_name: str):
         """通过完整路径下载文件（保留原方法）"""
-        await self._initialize_once()
         async with self._get_client() as client:
             return await client.get_object(Bucket=bucket_name, Key=file_name)
     
@@ -266,7 +292,6 @@ class AsyncMinioClient:
         extension: str = ''
     ):
         """通过 MD5 删除文件"""
-        await self._initialize_once()
         
         object_key = self._generate_object_key(md5_hash, extension)
         
@@ -276,14 +301,12 @@ class AsyncMinioClient:
     
     async def delete_file(self, bucket_name: str, file_name: str):
         """通过完整路径删除文件（保留原方法）"""
-        await self._initialize_once()
         async with self._get_client() as client:
             await client.delete_object(Bucket=bucket_name, Key=file_name)
             logger.info(f"Deleted {file_name} from {bucket_name}")
     
     async def list_files(self, bucket_name: str, prefix: str = ''):
         """列出文件"""
-        await self._initialize_once()
         async with self._get_client() as client:
             params = {'Bucket': bucket_name}
             if prefix:
@@ -309,7 +332,6 @@ class AsyncMinioClient:
         Returns:
             预签名 URL
         """
-        await self._initialize_once()
         
         object_key = self._generate_object_key(md5_hash, extension)
         

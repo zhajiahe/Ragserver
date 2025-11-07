@@ -94,7 +94,8 @@ class Settings(BaseSettings):
         return f"redis://{self.redis_host}:{self.redis_port}/2"
     
     # ==================== MinIO 对象存储配置 ====================
-    minio_host: str = Field(default="localhost", description="MinIO 主机")
+    minio_public_host: str = Field(default="http://116.62.153.171", description="MinIO 公共主机")
+    minio_host: str = Field(default="localhost", description="MinIO 内网主机")
     minio_port: int = Field(default=9000, description="MinIO 端口")
     minio_console_port: int = Field(default=9001, description="MinIO 控制台端口")
     minio_access_key: str = Field(default="ragserver", description="MinIO Access Key")
@@ -190,31 +191,10 @@ class Settings(BaseSettings):
     hybrid_vector_weight: float = Field(default=0.7, description="混合搜索向量权重")
     hybrid_fulltext_weight: float = Field(default=0.3, description="混合搜索全文权重")
     
-    # ==================== 缓存配置 ====================
-    cache_enabled: bool = Field(default=True, description="是否启用缓存")
-    cache_ttl_seconds: int = Field(default=300, description="缓存过期时间（秒）")
-    query_vector_cache_ttl: int = Field(default=86400, description="查询向量缓存时间（秒）")
-    search_result_cache_ttl: int = Field(default=300, description="搜索结果缓存时间（秒）")
-    
-    # ==================== 限流配置 ====================
-    rate_limit_enabled: bool = Field(default=True, description="是否启用限流")
-    rate_limit_requests_per_minute: int = Field(default=60, description="每分钟请求数限制")
-    rate_limit_daily_quota: int = Field(default=10000, description="每日请求配额")
-    
     # ==================== 任务队列配置 ====================
     taskiq_workers: int = Field(default=4, description="Taskiq Worker 数量")
     taskiq_max_retries: int = Field(default=3, description="任务最大重试次数")
     taskiq_retry_delay: int = Field(default=60, description="任务重试延迟（秒）")
-    
-    # 文档处理配置
-    document_processing_timeout: int = Field(default=600, description="文档处理超时时间（秒）")
-    embedding_batch_size: int = Field(default=50, description="Embedding 批量大小")
-    embedding_max_concurrency: int = Field(default=3, description="Embedding 最大并发数")
-    
-    # ==================== 监控配置 ====================
-    prometheus_enabled: bool = Field(default=True, description="是否启用 Prometheus")
-    prometheus_port: int = Field(default=19090, description="Prometheus 端口")
-    grafana_port: int = Field(default=13000, description="Grafana 端口")
     
     # ==================== 日志配置 ====================
     log_format: str = Field(
@@ -226,42 +206,11 @@ class Settings(BaseSettings):
     log_file_max_size: int = Field(default=10 * 1024 * 1024, description="日志文件最大大小（字节）")
     log_file_backup_count: int = Field(default=10, description="日志文件备份数量")
     
-    # ==================== 安全配置 ====================
-    # 密码策略
-    password_min_length: int = Field(default=8, description="密码最小长度")
-    password_require_uppercase: bool = Field(default=True, description="密码是否需要大写字母")
-    password_require_lowercase: bool = Field(default=True, description="密码是否需要小写字母")
-    password_require_digit: bool = Field(default=True, description="密码是否需要数字")
-    password_require_special: bool = Field(default=False, description="密码是否需要特殊字符")
-    
-    # API Key 配置
-    api_key_prefix: str = Field(default="kb_", description="API Key 前缀")
-    api_key_length: int = Field(default=32, description="API Key 长度")
-    
-    # ==================== 存储配额配置 ====================
-    default_user_storage_quota_gb: int = Field(default=10, description="默认用户存储配额（GB）")
-    max_collections_per_user: int = Field(default=100, description="每个用户最多知识库数量")
-    max_documents_per_collection: int = Field(default=10000, description="每个知识库最多文档数量")
-    
-    @property
-    def default_user_storage_quota_bytes(self) -> int:
-        """默认用户存储配额（字节）"""
-        return self.default_user_storage_quota_gb * 1024 * 1024 * 1024
-        
-    # ==================== Webhook 配置 ====================
-    webhook_enabled: bool = Field(default=True, description="是否启用 Webhook")
-    webhook_timeout: int = Field(default=10, description="Webhook 超时时间（秒）")
-    webhook_max_retries: int = Field(default=3, description="Webhook 最大重试次数")
 
     # ==================== 测试配置 ====================
     api_base_url: str = Field(default="http://localhost:8000", description="API 基础 URL")
     http_timeout: int = Field(default=30, description="HTTP 请求超时时间（秒）")
     
-    # ==================== 开发模式配置 ====================
-    reload: bool = Field(default=False, description="是否启用热重载")
-    docs_url: Optional[str] = Field(default="/docs", description="API 文档路径")
-    redoc_url: Optional[str] = Field(default="/redoc", description="ReDoc 文档路径")
-    openapi_url: Optional[str] = Field(default="/openapi.json", description="OpenAPI Schema 路径")
     
     # 生产环境禁用文档
     @property

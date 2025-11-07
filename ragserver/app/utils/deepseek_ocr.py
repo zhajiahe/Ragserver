@@ -1,22 +1,31 @@
 import os
-import pymupdf as fitz
+import fitz
 import io
 import re
 import argparse
 import asyncio
 from tqdm.asyncio import tqdm_asyncio
-import base64
 from pathlib import Path
-from PIL import Image
+from PIL import Image, ImageOps
+import math
 
 from ragserver.app.utils.llm_service import LLMService
+from ragserver.app.utils.minio_client import AsyncMinioClient
+from ragserver.config import settings
 
+minio_client = AsyncMinioClient()
+llm_service = LLMService(
+        model='deepseek-ai/DeepSeek-OCR',
+    )
 
 # ============================================
 # 配置常量
 # ============================================
 
 DPI = 144
+BASE_SIZE = 1024  # 全局视图基础尺寸
+IMAGE_SIZE = 640  # 图片尺寸
+CROP_MODE = True  # 是否启用动态裁剪
 
 
 class Colors:
@@ -88,69 +97,122 @@ def pdf_to_images(pdf_path, dpi=300, image_format="PNG"):
 
 
 # ============================================
-# 图片编码函数
+# 图片上传函数
 # ============================================
 
-def encode_image_to_base64(image: Image.Image, image_format="PNG") -> str:
-    """将PIL图片编码为base64字符串"""
+async def upload_image_to_minio(image: Image.Image, page_idx: int, image_format="PNG") -> str:
+    """
+    将PIL图片上传到MinIO并返回访问URL
+    
+    Args:
+        image: PIL图片对象
+        page_idx: 页码索引
+        image_format: 图片格式（PNG或JPEG）
+    
+    Returns:
+        图片的访问URL
+    """
     buffered = io.BytesIO()
     
+    # 确保是RGB模式
     if image.mode != 'RGB':
         image = image.convert('RGB')
     
+    # 保存图片到内存
     image.save(buffered, format=image_format, quality=95)
-    return f"data:image/{image_format};base64,{base64.b64encode(buffered.getvalue()).decode('utf-8')}"
+    buffered.seek(0)
+    
+    # 生成文件名
+    filename = f"temp/ocr_page_{page_idx}.{image_format.lower()}"
+    
+    # 上传到MinIO临时桶
+    result = await minio_client.upload_file(
+        bucket_name=settings.minio_bucket_temp,
+        file=buffered,
+        file_name=filename,
+        public=True
+    )
+    print(f"{Colors.GREEN}Uploaded image to MinIO: {page_idx}: {result['s3_url']}{Colors.RESET}")
+    return result['s3_url']
 
 
 # ============================================
 # LLM 调用函数（带重试）
 # ============================================
 
-async def process_image(
-    page_idx: int, 
-    image: Image.Image, 
+async def upload_single_image(
+    page_idx: int,
+    image: Image.Image,
+    semaphore: asyncio.Semaphore
+) -> tuple[int, str]:
+    """上传单张图片到MinIO（带并发控制）"""
+    try:
+        image_url = await upload_image_to_minio(image, page_idx, image_format="PNG")
+        return (page_idx, image_url)
+    except Exception as e:
+        print(f"{Colors.RED}上传第 {page_idx+1} 页图片时出错: {e}{Colors.RESET}")
+        return (page_idx, "")
+
+
+async def process_image_with_llm(
+    page_idx: int,
+    image_url: str,
     llm_service: LLMService,
     semaphore: asyncio.Semaphore
 ) -> tuple[int, str]:
-    """使用LLM处理单张图片（带并发控制）"""
-    async with semaphore:
-        try:
-            base64_image = encode_image_to_base64(image, image_format="PNG")
-            
-            messages = [
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": "<image>\n<|grounding|>Convert the document to markdown."
-                        },
-                        {
-                            "type": "image_url",
-                            "image_url": {
-                                "url": base64_image,
-                            }
-                        }
-                    ]
-                }
-            ]
-            
-            response = await llm_service.chat(messages=messages)
-            return (page_idx, response)
-        
-        except Exception as e:
-            print(f"{Colors.RED}处理第 {page_idx+1} 页时出错: {e}{Colors.RESET}")
+    """使用LLM处理单张图片，并返回处理结果"""
+    try:
+        if not image_url:
             return (page_idx, "")
+        
+        messages = [
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": "<image>\n<|grounding|>Convert the document to markdown."
+                    },
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": image_url,
+                        }
+                    }
+                ]
+            }
+        ]
+        
+        response = await llm_service.chat(messages=messages)
+        return (page_idx, response)
+    
+    except Exception as e:
+        print(f"{Colors.RED}处理第 {page_idx+1} 页时出错: {e}{Colors.RESET}")
+        return (page_idx, "")
 
 
 # ============================================
-# 内容清理函数（简化版）
+# 内容清理函数（参考DeepSeek-OCR处理方式）
 # ============================================
 
-def extract_image_refs(text):
-    """提取图片引用"""
-    pattern = r'(<\|ref\|>image<\|/ref\|><\|det\|>(.*?)<\|/det\|>)'
-    return re.findall(pattern, text, re.DOTALL)
+def re_match(text):
+    """
+    提取文本中的各种标记
+    返回: (图片引用列表, 图片标记列表, 其他标记列表)
+    """
+    # 提取图片引用 <|ref|>image<|/ref|><|det|>...<|/det|>
+    pattern_ref = r'<\|ref\|>image<\|/ref\|><\|det\|>(.*?)<\|/det\|>'
+    matches_ref = re.findall(pattern_ref, text, re.DOTALL)
+    
+    # 提取完整的图片标记（用于替换）
+    pattern_images = r'<\|ref\|>image<\|/ref\|><\|det\|>.*?<\|/det\|>'
+    matches_images = re.findall(pattern_images, text, re.DOTALL)
+    
+    # 提取其他标记
+    pattern_other = r'<\|ref\|>.*?<\|/ref\|><\|det\|>.*?<\|/det\|>'
+    matches_other = re.findall(pattern_other, text, re.DOTALL)
+    
+    return matches_ref, matches_images, matches_other
 
 
 def save_page_image(image: Image.Image, page_idx: int, output_path: str):
@@ -170,25 +232,33 @@ def save_page_image(image: Image.Image, page_idx: int, output_path: str):
 
 
 def clean_content(content, page_idx, output_path):
-    """清理内容并保存图片"""
-    # 提取图片引用
-    image_refs = extract_image_refs(content)
+    """
+    清理内容并保存图片（参考DeepSeek-OCR的处理方式）
+    """
+    # 提取各种标记
+    matches_ref, matches_images, matches_other = re_match(content)
     
     # 替换图片引用为markdown格式
-    for idx, img_ref in enumerate(image_refs):
-        content = content.replace(img_ref[0], f'![](images/{page_idx}_{idx}.jpg)\n')
+    for idx, a_match_image in enumerate(matches_images):
+        content = content.replace(a_match_image, f'![](images/page_{page_idx}_extracted_{idx}.jpg)\n')
     
-    # 清理所有其他标记
-    content = re.sub(r'<\|ref\|>.*?<\|/ref\|><\|det\|>.*?<\|/det\|>', '', content, flags=re.DOTALL)
+    # 清理其他标记
+    for a_match_other in matches_other:
+        content = content.replace(a_match_other, '')
     
-    # 清理特殊字符
+    # 清理特殊字符（参考原代码）
     content = (content
                .replace('\\coloneqq', ':=')
                .replace('\\eqqcolon', '=:')
                .replace('\n\n\n\n', '\n\n')
                .replace('\n\n\n', '\n\n'))
     
-    return content
+    # 去除结束标记
+    stop_str = '<｜end▁of▁sentence｜>'
+    if content.endswith(stop_str):
+        content = content[:-len(stop_str)]
+    
+    return content.strip()
 
 
 # ============================================
@@ -199,9 +269,7 @@ async def process_pdf(args):
     """处理PDF的主函数"""
     # 初始化LLM服务
     print(f'{Colors.BLUE}初始化 LLM 服务...{Colors.RESET}')
-    llm_service = LLMService(
-        model='deepseek-ai/DeepSeek-OCR',
-    )
+    
     
     # 创建输出目录
     os.makedirs(args.output, exist_ok=True)
@@ -225,16 +293,36 @@ async def process_pdf(args):
     # 创建并发控制信号量
     semaphore = asyncio.Semaphore(args.max_concurrent)
     
-    # 并发处理所有图片（带进度条）
-    print(f'{Colors.GREEN}开始处理 {len(images)} 张图片...{Colors.RESET}')
-    tasks = [
-        process_image(idx, image, llm_service, semaphore) 
+    # 阶段1: 先上传所有图片到MinIO
+    print(f'{Colors.GREEN}阶段1: 上传 {len(images)} 张图片到MinIO...{Colors.RESET}')
+    upload_tasks = [
+        upload_single_image(idx, image, semaphore) 
         for idx, image in enumerate(images)
     ]
     
-    # 使用 tqdm 显示进度
+    upload_results = []
+    for coro in tqdm_asyncio.as_completed(upload_tasks, total=len(upload_tasks), desc="上传图片", unit="张"):
+        result = await coro
+        upload_results.append(result)
+    
+    # 按页码排序
+    upload_results.sort(key=lambda x: x[0])
+    print(f'{Colors.GREEN}✓ 图片上传完成{Colors.RESET}\n')
+    
+    # 等待一小段时间确保MinIO URL完全生效
+    print(f'{Colors.BLUE}等待MinIO URL生效...{Colors.RESET}')
+    await asyncio.sleep(2)
+    print(f'{Colors.GREEN}✓ 准备就绪{Colors.RESET}\n')
+    
+    # 阶段2: 使用LLM处理所有图片
+    print(f'{Colors.GREEN}阶段2: 使用LLM处理 {len(images)} 张图片...{Colors.RESET}')
+    llm_tasks = [
+        process_image_with_llm(page_idx, image_url, llm_service, semaphore)
+        for page_idx, image_url in upload_results
+    ]
+    
     results = []
-    for coro in tqdm_asyncio.as_completed(tasks, total=len(tasks), desc="OCR处理", unit="页"):
+    for coro in tqdm_asyncio.as_completed(llm_tasks, total=len(llm_tasks), desc="OCR处理", unit="页"):
         result = await coro
         results.append(result)
     
@@ -276,11 +364,18 @@ async def process_pdf(args):
     
     contents = []
     page_separator = '\n\n<--- Page Split --->\n\n'
+    total_extracted_images = 0
     
     for page_idx, content in results:
         if not content:
             print(f"{Colors.YELLOW}⚠ 第 {page_idx+1} 页内容为空，跳过{Colors.RESET}")
             continue
+        
+        # 统计提取的图片数量
+        _, matches_images, _ = re_match(content)
+        if matches_images:
+            total_extracted_images += len(matches_images)
+            print(f"{Colors.GREEN}  第 {page_idx+1} 页: 提取 {len(matches_images)} 张图片{Colors.RESET}")
         
         # 清理内容
         cleaned_content = clean_content(content, page_idx, args.output)
@@ -290,7 +385,7 @@ async def process_pdf(args):
     final_content = page_separator.join(contents)
     
     # 保存结果
-    print(f'\n{Colors.GREEN}保存结果...{Colors.RESET}')
+    print(f'\n{Colors.GREEN}保存清理后的Markdown...{Colors.RESET}')
     
     with open(mmd_path, 'w', encoding='utf-8') as f:
         f.write(final_content)
@@ -302,11 +397,10 @@ async def process_pdf(args):
     print(f'{Colors.BLUE}{"="*60}{Colors.RESET}')
     print(f'清理后Markdown: {Colors.YELLOW}{mmd_path}{Colors.RESET}')
     print(f'原始输出文本: {Colors.YELLOW}{raw_path}{Colors.RESET}')
-    print(f'页面图片: {Colors.YELLOW}{args.output}/images/page_*.jpg{Colors.RESET}')
-    print(f'提取图片: {Colors.YELLOW}{args.output}/images/{Colors.RESET}')
+    print(f'PDF页面图片: {Colors.YELLOW}{args.output}/images/page_*.jpg ({len(images)} 张){Colors.RESET}')
+    if total_extracted_images > 0:
+        print(f'提取的图片: {Colors.YELLOW}{args.output}/images/page_*_extracted_*.jpg ({total_extracted_images} 张){Colors.RESET}')
     print(f'处理页数: {Colors.YELLOW}{len([c for _, c in results if c])}/{len(images)}{Colors.RESET}')
-    
-    
     print(f'{Colors.BLUE}{"="*60}{Colors.RESET}\n')
 
 
