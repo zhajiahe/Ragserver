@@ -99,6 +99,7 @@ class AsyncMinioClient:
         bucket_name: str, 
         file: BinaryIO, 
         file_name: str, 
+        public: bool = False,
     ) -> Dict[str, any]:
         """
         上传文件并返回完整信息
@@ -107,7 +108,7 @@ class AsyncMinioClient:
             bucket_name: 桶名称
             file: 文件对象
             file_name: 原始文件名
-        
+            public: 是否公开访问
         Returns:
             dict: {
                 'filename': '原始文件名',
@@ -140,6 +141,12 @@ class AsyncMinioClient:
         # 生成对象 key
         object_key = self._generate_object_key(md5_hash, mime_type)
         
+        # 生成 S3 URL (必须在 object_key 生成之后)
+        if public:
+            s3_url = f"{settings.minio_public_host}:{settings.minio_port}/{bucket_name}/{object_key}"
+        else:
+            s3_url = f"{self.endpoint_url}/{bucket_name}/{object_key}"
+        
         # 当前时间
         upload_time = datetime.now().isoformat()
         
@@ -163,14 +170,15 @@ class AsyncMinioClient:
                             'md5': md5_hash,
                             'sha256': sha256_hash,
                             'file-size': str(file_size),
-                            'upload-time': upload_time
+                            'upload-time': upload_time,
+                            'ACL': 'public-read' if public else None
                         }
                     }
                 )
                 logger.info(f"Uploaded {file_name} (MD5: {md5_hash}, SHA256: {sha256_hash}) to {bucket_name}/{object_key}")
         
         # 生成 S3 URL
-        s3_url = f"{self.endpoint_url}/{bucket_name}/{object_key}"
+        
         
         return {
             'filename': file_name,
