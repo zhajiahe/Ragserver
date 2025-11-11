@@ -172,8 +172,8 @@ class Settings(BaseSettings):
 
     # SiliconFlow LLM
     siliconflow_llm_model: str = Field(default="Qwen/Qwen3-8B", description="硅基流动 LLM 模型")
-    siliconflow_llm_temperature: float = Field(default=0.7, description="LLM 温度")
-    siliconflow_llm_max_tokens: int = Field(default=2000, description="LLM 最大 Token 数")
+    siliconflow_llm_temperature: float = Field(default=0.0, description="LLM 温度")
+    siliconflow_llm_max_tokens: int = Field(default=4096, description="LLM 最大 Token 数")
     
     # ==================== 向量搜索配置 ====================
     # pgvector 索引配置

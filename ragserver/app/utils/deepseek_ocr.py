@@ -4,16 +4,14 @@ import io
 import re
 import argparse
 import asyncio
+import base64
 from tqdm.asyncio import tqdm_asyncio
 from pathlib import Path
 from PIL import Image, ImageOps
 import math
 
 from ragserver.app.utils.llm_service import LLMService
-from ragserver.app.utils.minio_client import AsyncMinioClient
-from ragserver.config import settings
 
-minio_client = AsyncMinioClient()
 llm_service = LLMService(
         model='deepseek-ai/DeepSeek-OCR',
     )
@@ -45,7 +43,8 @@ def parse_args():
     parser = argparse.ArgumentParser(description='PDF OCR处理工具（简化版）')
     parser.add_argument('-i', '--input', type=str, required=True, help='输入PDF文件路径')
     parser.add_argument('-o', '--output', type=str, required=True, help='输出目录路径')
-    parser.add_argument('--max-concurrent', type=int, default=30, help='最大并发数（默认3）')
+    parser.add_argument('--max-concurrent', type=int, default=30, help='最大并发数（默认30）')
+    parser.add_argument('--max-pages', type=int, default=10, help='最大处理页数（默认处理所有页）')
     
     args = parser.parse_args()
     
@@ -54,6 +53,9 @@ def parse_args():
     
     if not args.input.lower().endswith('.pdf'):
         parser.error(f"输入文件必须是PDF格式: {args.input}")
+    
+    if args.max_pages is not None and args.max_pages <= 0:
+        parser.error(f"--max-pages 必须大于 0")
     
     return args
 
@@ -97,20 +99,19 @@ def pdf_to_images(pdf_path, dpi=300, image_format="PNG"):
 
 
 # ============================================
-# 图片上传函数
+# 图片编码函数
 # ============================================
 
-async def upload_image_to_minio(image: Image.Image, page_idx: int, image_format="PNG") -> str:
+def image_to_base64(image: Image.Image, image_format="PNG") -> str:
     """
-    将PIL图片上传到MinIO并返回访问URL
+    将PIL图片转换为base64编码
     
     Args:
         image: PIL图片对象
-        page_idx: 页码索引
         image_format: 图片格式（PNG或JPEG）
     
     Returns:
-        图片的访问URL
+        base64编码的图片字符串（带data URI前缀）
     """
     buffered = io.BytesIO()
     
@@ -122,63 +123,43 @@ async def upload_image_to_minio(image: Image.Image, page_idx: int, image_format=
     image.save(buffered, format=image_format, quality=95)
     buffered.seek(0)
     
-    # 生成文件名
-    filename = f"temp/ocr_page_{page_idx}.{image_format.lower()}"
+    # 编码为base64
+    img_base64 = base64.b64encode(buffered.read()).decode('utf-8')
     
-    # 上传到MinIO临时桶
-    result = await minio_client.upload_file(
-        bucket_name=settings.minio_bucket_temp,
-        file=buffered,
-        file_name=filename,
-        public=True
-    )
-    print(f"{Colors.GREEN}Uploaded image to MinIO: {page_idx}: {result['s3_url']}{Colors.RESET}")
-    return result['s3_url']
+    # 返回data URI格式
+    mime_type = f"image/{image_format.lower()}"
+    return f"data:{mime_type};base64,{img_base64}"
 
 
 # ============================================
 # LLM 调用函数（带重试）
 # ============================================
 
-async def upload_single_image(
-    page_idx: int,
-    image: Image.Image,
-    semaphore: asyncio.Semaphore
-) -> tuple[int, str]:
-    """上传单张图片到MinIO（带并发控制）"""
-    try:
-        image_url = await upload_image_to_minio(image, page_idx, image_format="PNG")
-        return (page_idx, image_url)
-    except Exception as e:
-        print(f"{Colors.RED}上传第 {page_idx+1} 页图片时出错: {e}{Colors.RESET}")
-        return (page_idx, "")
-
-
 async def process_image_with_llm(
     page_idx: int,
-    image_url: str,
+    image: Image.Image,
     llm_service: LLMService,
-    semaphore: asyncio.Semaphore
 ) -> tuple[int, str]:
     """使用LLM处理单张图片，并返回处理结果"""
     try:
-        if not image_url:
-            return (page_idx, "")
+        # 将图片转换为base64
+        image_base64 = image_to_base64(image, image_format="JPEG")
         
         messages = [
             {
                 "role": "user",
                 "content": [
+                    
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": image_base64,
+                        }
+                    },
                     {
                         "type": "text",
                         "text": "<image>\n<|grounding|>Convert the document to markdown."
                     },
-                    {
-                        "type": "image_url",
-                        "image_url": {
-                            "url": image_url,
-                        }
-                    }
                 ]
             }
         ]
@@ -282,43 +263,28 @@ async def process_pdf(args):
     print(f'输入文件: {Colors.YELLOW}{args.input}{Colors.RESET}')
     print(f'输出目录: {Colors.YELLOW}{args.output}{Colors.RESET}')
     print(f'最大并发: {Colors.YELLOW}{args.max_concurrent}{Colors.RESET}')
+    if args.max_pages:
+        print(f'最大页数: {Colors.YELLOW}{args.max_pages}{Colors.RESET}')
     print(f'{Colors.BLUE}{"="*60}{Colors.RESET}\n')
     
     # 加载PDF
     print(f'{Colors.BLUE}PDF加载中...{Colors.RESET}')
     images = pdf_to_images(args.input, dpi=DPI)
+    
+    # 应用max_pages限制
+    total_pages = len(images)
+    if args.max_pages and args.max_pages < total_pages:
+        images = images[:args.max_pages]
+        print(f'{Colors.GREEN}✓ 成功加载 {total_pages} 页，将处理前 {len(images)} 页{Colors.RESET}\n')
+    else:
+        print(f'{Colors.GREEN}✓ 成功加载 {len(images)} 页{Colors.RESET}\n')
 
-    print(f'{Colors.GREEN}✓ 成功加载 {len(images)} 页{Colors.RESET}\n')
-
-    # 创建并发控制信号量
-    semaphore = asyncio.Semaphore(args.max_concurrent)
     
-    # 阶段1: 先上传所有图片到MinIO
-    print(f'{Colors.GREEN}阶段1: 上传 {len(images)} 张图片到MinIO...{Colors.RESET}')
-    upload_tasks = [
-        upload_single_image(idx, image, semaphore) 
-        for idx, image in enumerate(images)
-    ]
-    
-    upload_results = []
-    for coro in tqdm_asyncio.as_completed(upload_tasks, total=len(upload_tasks), desc="上传图片", unit="张"):
-        result = await coro
-        upload_results.append(result)
-    
-    # 按页码排序
-    upload_results.sort(key=lambda x: x[0])
-    print(f'{Colors.GREEN}✓ 图片上传完成{Colors.RESET}\n')
-    
-    # 等待一小段时间确保MinIO URL完全生效
-    print(f'{Colors.BLUE}等待MinIO URL生效...{Colors.RESET}')
-    await asyncio.sleep(2)
-    print(f'{Colors.GREEN}✓ 准备就绪{Colors.RESET}\n')
-    
-    # 阶段2: 使用LLM处理所有图片
-    print(f'{Colors.GREEN}阶段2: 使用LLM处理 {len(images)} 张图片...{Colors.RESET}')
+    # 使用LLM处理所有图片（直接使用base64编码）
+    print(f'{Colors.GREEN}使用LLM处理 {len(images)} 张图片...{Colors.RESET}')
     llm_tasks = [
-        process_image_with_llm(page_idx, image_url, llm_service, semaphore)
-        for page_idx, image_url in upload_results
+        process_image_with_llm(idx, image, llm_service)
+        for idx, image in enumerate(images)
     ]
     
     results = []
