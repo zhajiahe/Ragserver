@@ -73,12 +73,20 @@
 - [x] 权限控制
 - [x] 完整的测试套件 (13个测试用例)
 
-### 8. 知识库分享 (60%)
+### 8. 知识库分享 (100%) ⭐ 新增
 - [x] 创建分享链接 (`POST /api/v1/collections/{collection_id}/share`)
+- [x] 获取知识库的所有分享 (`GET /api/v1/collections/{collection_id}/shares`)
+- [x] 获取分享详情 (`GET /api/v1/shares/{share_id}`)
+- [x] 更新分享 (`PUT /api/v1/shares/{share_id}`)
+  - [x] 启用/停用分享
+  - [x] 修改过期时间
+  - [x] 修改搜索配置
+- [x] 删除分享 (`DELETE /api/v1/shares/{share_id}`)
 - [x] 分享令牌生成
 - [x] 过期时间设置
 - [x] 使用统计
 - [x] 数据模型 (CollectionShare)
+- [x] 完整的测试套件 (27个测试用例)
 
 ### 9. 数据库和存储 (100%)
 - [x] PostgreSQL + pgvector
@@ -165,20 +173,29 @@
 
 ---
 
-### 2. 知识库分享管理接口 ⚠️ **P1 - 重要**
+### 2. 知识库分享管理接口 ✅ **P1 - 重要**
 **优先级**: 高
-**状态**: 创建接口已实现，管理接口未实现
+**状态**: ✅ 已完成
 
-**需要实现**:
-- [ ] 获取知识库的所有分享 (`GET /api/v1/collections/{collection_id}/shares`)
-- [ ] 获取分享详情 (`GET /api/v1/shares/{share_id}`)
-- [ ] 更新分享 (`PUT /api/v1/shares/{share_id}`)
-  - [ ] 启用/停用分享
-  - [ ] 修改过期时间
-  - [ ] 修改搜索配置
-- [ ] 删除分享 (`DELETE /api/v1/shares/{share_id}`)
+**已实现功能**:
+- [x] 获取知识库的所有分享 (`GET /api/v1/collections/{collection_id}/shares`)
+- [x] 获取分享详情 (`GET /api/v1/shares/{share_id}`)
+- [x] 更新分享 (`PUT /api/v1/shares/{share_id}`)
+  - [x] 启用/停用分享
+  - [x] 修改过期时间
+  - [x] 修改搜索配置
+- [x] 删除分享 (`DELETE /api/v1/shares/{share_id}`)
+- [x] 完整的测试套件 (27个测试用例)
 
-**文件位置**: `ragserver/app/api/collections.py` (需要新增接口)
+**实现细节**:
+- 支持分页查询分享列表
+- 严格的权限控制（只能管理自己创建的分享）
+- 支持灵活的分享配置更新
+- 完整的错误处理和验证
+
+**文件位置**: 
+- 实现: `ragserver/app/api/collections.py`
+- 测试: `tests/api/test_shares_integration.py`
 
 ---
 
@@ -255,9 +272,9 @@
 | **全文搜索** | **100%** | ✅ **完成** |
 | **混合搜索** | **100%** | ✅ **完成** |
 | **日志监控** | **100%** | ✅ **完成** |
-| 知识库分享 | 60% | ⚠️ 部分完成 |
+| 知识库分享 | 100% | ✅ 完成 |
 
-**总体完成度**: 约 **95%**
+**总体完成度**: 约 **100%**
 
 **核心功能完成度**: 约 **100%** (所有核心功能已完成)
 
@@ -276,7 +293,7 @@
 - [x] 文档解析测试
 - [x] 分块查询测试
 - [x] 向量搜索测试 (24个测试用例)
-- [ ] 知识库分享测试 (部分完成)
+- [x] 知识库分享测试 (27个测试用例)
 
 ### 2. 文档完善
 - [x] AGENTS.md (AI开发指南)

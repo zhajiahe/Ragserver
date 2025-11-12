@@ -137,6 +137,7 @@ def create_app() -> FastAPI:
     
     # 知识库管理路由
     app.include_router(collections.router)
+    app.include_router(collections.shares_router)
     
     # 文档管理路由
     app.include_router(documents.router)
