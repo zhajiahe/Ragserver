@@ -45,10 +45,10 @@ def create_app() -> FastAPI:
     )
     
     # ==================== 服务监控配置 ====================
-    radar = Radar(app,
-            dashboard_path="radar",
-            db_engine=async_engine)
-    radar.create_tables()
+    # 只在非开发环境启用 Radar（避免 DuckDB 文件锁冲突）
+    if not settings.debug:
+        radar = Radar(app, db_engine=async_engine)
+        radar.create_tables()
 
     # ==================== 中间件配置 ====================
     # 日志中间件（最先添加，最后执行）
