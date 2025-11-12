@@ -316,5 +316,4 @@
 - [PRD.md](./PRD.md) - 产品需求文档
 - [ER.md](./ER.md) - 数据模型文档
 - [AGENTS.md](./AGENTS.md) - AI开发指南
-- [PARSERS.md](./docs/PARSERS.md) - 解析器文档
 - [Makefile](./Makefile) - 构建命令

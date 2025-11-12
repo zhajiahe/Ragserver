@@ -111,9 +111,6 @@ alembic history
 
 # 5. 应用迁移
 alembic upgrade head
-
-# 6. 重启应用
-pm2 restart ragserver
 ```
 
 ### 场景 4: 回滚错误的迁移

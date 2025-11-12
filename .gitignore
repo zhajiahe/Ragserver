@@ -10,7 +10,7 @@ __pycache__/
 *.so
 
 # db
-radar.duckdb
+radar.duckdb*
 # Swp files
 *.swp
 logs
