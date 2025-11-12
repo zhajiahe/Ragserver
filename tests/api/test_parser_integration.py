@@ -58,17 +58,33 @@ async def test_collection(db_session: AsyncSession, test_user: User):
 @pytest.fixture
 async def test_documents(db_session: AsyncSession, test_collection: Collection, test_user: User) -> List[Document]:
     """创建测试文档"""
+    from ragserver.app.utils.minio_client import minio_client
+    from ragserver.config import settings
+    from io import BytesIO
+    
     documents = []
     for i in range(3):
+        # 创建测试文件内容并上传到 MinIO
+        test_content = f"This is test document {i} content.\n" * 10
+        file_obj = BytesIO(test_content.encode('utf-8'))
+        
+        # 上传文件到 MinIO
+        minio_info = await minio_client.upload_file(
+            bucket_name=settings.minio_bucket_documents,
+            file=file_obj,
+            file_name=f"test{i}.txt",
+        )
+        
+        # 创建文档记录
         doc = Document(
             collection_id=test_collection.id,
             uploaded_by=test_user.id,
-            filename=f"test{i}.txt",
-            file_type="txt",
-            file_size=100,
-            s3_url=f"s3://test/test{i}.txt",
-            mime_type="text/plain",
-            file_hash=f"hash{i}",
+            filename=minio_info['filename'],
+            file_type=minio_info['file_type'],
+            file_size=minio_info['file_size'],
+            s3_url=minio_info['s3_url'],
+            mime_type=minio_info['mime_type'],
+            file_hash=minio_info['file_hash'],
             status="pending",
         )
         db_session.add(doc)

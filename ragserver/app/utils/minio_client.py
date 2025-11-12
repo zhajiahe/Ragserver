@@ -17,7 +17,7 @@ class AsyncMinioClient:
         self.access_key = settings.minio_access_key
         self.secret_key = settings.minio_secret_key
         self._initialized = False
-        asyncio.run(self._initialize_once())
+        self._init_lock = asyncio.Lock()
     
     @asynccontextmanager
     async def _get_client(self):
@@ -76,13 +76,14 @@ class AsyncMinioClient:
     
     async def _initialize_once(self):
         """首次调用时初始化桶"""
-        if not self._initialized:
-            async with self._get_client() as client:
-                await self._ensure_bucket(client, settings.minio_bucket_documents)
-                await self._ensure_bucket(client, settings.minio_bucket_avatars)
-                await self._ensure_bucket(client, settings.minio_bucket_temp, public=True)
-            self._initialized = True
-            logger.info("Async MinIO client initialized")
+        async with self._init_lock:
+            if not self._initialized:
+                async with self._get_client() as client:
+                    await self._ensure_bucket(client, settings.minio_bucket_documents)
+                    await self._ensure_bucket(client, settings.minio_bucket_avatars)
+                    await self._ensure_bucket(client, settings.minio_bucket_temp, public=True)
+                self._initialized = True
+                logger.info("Async MinIO client initialized")
     
     def _calculate_md5(self, file_content: bytes) -> str:
         """计算文件内容的 MD5 值"""
@@ -153,6 +154,8 @@ class AsyncMinioClient:
                 'upload_time': '上传时间'
             }
         """
+        # 确保初始化
+        await self._initialize_once()
         
         # 读取文件内容
         file_content = file.read()      
@@ -188,21 +191,24 @@ class AsyncMinioClient:
             else:
                 # 上传文件
                 file_obj = BytesIO(file_content)
+                extra_args = {
+                    'ContentType': mime_type,
+                    'Metadata': {
+                        'original-filename': file_name,
+                        'md5': md5_hash,
+                        'sha256': sha256_hash,
+                        'file-size': str(file_size),
+                        'upload-time': upload_time,
+                    }
+                }
+                if public:
+                    extra_args['ACL'] = 'public-read'
+                
                 await client.upload_fileobj(
                     file_obj, 
                     bucket_name, 
                     object_key, 
-                    ExtraArgs={
-                        'ContentType': mime_type,
-                        'Metadata': {
-                            'original-filename': file_name,
-                            'md5': md5_hash,
-                            'sha256': sha256_hash,
-                            'file-size': str(file_size),
-                            'upload-time': upload_time,
-                            'ACL': 'public-read' if public else None
-                        }
-                    }
+                    ExtraArgs=extra_args
                 )
                 logger.info(f"Uploaded {file_name} (MD5: {md5_hash}, SHA256: {sha256_hash}) to {bucket_name}/{object_key}")
         
@@ -243,6 +249,8 @@ class AsyncMinioClient:
                 'metadata': {...}
             } 或 None（文件不存在）
         """
+        # 确保初始化
+        await self._initialize_once()
         
         object_key = self._generate_object_key(md5_hash, extension)
         
@@ -274,6 +282,8 @@ class AsyncMinioClient:
         extension: str = ''
     ):
         """通过 MD5 下载文件"""
+        # 确保初始化
+        await self._initialize_once()
         
         object_key = self._generate_object_key(md5_hash, extension)
         
@@ -282,6 +292,9 @@ class AsyncMinioClient:
     
     async def download_file(self, bucket_name: str, file_name: str):
         """通过完整路径下载文件（保留原方法）"""
+        # 确保初始化
+        await self._initialize_once()
+        
         async with self._get_client() as client:
             return await client.get_object(Bucket=bucket_name, Key=file_name)
     
@@ -292,6 +305,8 @@ class AsyncMinioClient:
         extension: str = ''
     ):
         """通过 MD5 删除文件"""
+        # 确保初始化
+        await self._initialize_once()
         
         object_key = self._generate_object_key(md5_hash, extension)
         
@@ -301,12 +316,18 @@ class AsyncMinioClient:
     
     async def delete_file(self, bucket_name: str, file_name: str):
         """通过完整路径删除文件（保留原方法）"""
+        # 确保初始化
+        await self._initialize_once()
+        
         async with self._get_client() as client:
             await client.delete_object(Bucket=bucket_name, Key=file_name)
             logger.info(f"Deleted {file_name} from {bucket_name}")
     
     async def list_files(self, bucket_name: str, prefix: str = ''):
         """列出文件"""
+        # 确保初始化
+        await self._initialize_once()
+        
         async with self._get_client() as client:
             params = {'Bucket': bucket_name}
             if prefix:
@@ -332,6 +353,8 @@ class AsyncMinioClient:
         Returns:
             预签名 URL
         """
+        # 确保初始化
+        await self._initialize_once()
         
         object_key = self._generate_object_key(md5_hash, extension)
         
