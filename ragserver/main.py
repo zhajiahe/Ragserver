@@ -14,35 +14,44 @@ from ragserver.config import settings
 from ragserver.app.dependencies.db import async_engine
 from ragserver.app.models import Base
 
+# 导入日志配置
+from ragserver.app.utils.logging_config import setup_logging, logger
+
+# 导入中间件
+from ragserver.app.middleware import LoggingMiddleware, PerformanceLoggingMiddleware
+
 # 导入所有 API 路由
 from ragserver.app.api import auth, collections, documents, search, parser, chunks
 # TODO: 以下路由待实现
 # from ragserver.app.api import files
+
+# 初始化日志系统
+setup_logging()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator:
     """应用生命周期管理"""
     # 启动时
-    print("🚀 应用启动中...")
-    print(f"📦 环境: {'开发' if settings.debug else '生产'}")
-    print(f"🗄️  数据库: {settings.postgres_host}:{settings.postgres_port}/{settings.postgres_db}")
-    print(f"🔑 Redis: {settings.redis_host}:{settings.redis_port}")
-    print(f"📦 MinIO: {settings.minio_host}:{settings.minio_port}")
+    logger.info("🚀 应用启动中...")
+    logger.info(f"📦 环境: {'开发' if settings.debug else '生产'}")
+    logger.info(f"🗄️  数据库: {settings.postgres_host}:{settings.postgres_port}/{settings.postgres_db}")
+    logger.info(f"🔑 Redis: {settings.redis_host}:{settings.redis_port}")
+    logger.info(f"📦 MinIO: {settings.minio_host}:{settings.minio_port}")
     
     # 开发模式：自动创建数据库表
     if settings.debug:
-        print("🔧 开发模式：自动创建数据库扩展和表...")
+        logger.info("🔧 开发模式：自动创建数据库扩展和表...")
         try:
             # 创建必要的 PostgreSQL 扩展和表
             async with async_engine.begin() as conn:
                 # 创建 pgvector 扩展（必需）
                 await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
-                print("  ✓ pgvector 扩展已启用")
+                logger.info("  ✓ pgvector 扩展已启用")
                 
                 # 创建所有表
                 await conn.run_sync(Base.metadata.create_all)
-                print("  ✓ 数据库表创建完成")
+                logger.info("  ✓ 数据库表创建完成")
             
             # 尝试创建 ParadeDB 扩展（可选，单独事务）
             paradedb_available = False
@@ -50,10 +59,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
                 async with async_engine.begin() as conn:
                     # ParadeDB 由多个扩展组成：pg_search（全文搜索）和 pg_analytics（分析）
                     await conn.execute(text("CREATE EXTENSION IF NOT EXISTS pg_search"))
-                    print("  ✓ ParadeDB (pg_search) 扩展已启用")
+                    logger.info("  ✓ ParadeDB (pg_search) 扩展已启用")
                     paradedb_available = True
             except Exception as e:
-                print(f"  ℹ️  ParadeDB 扩展不可用（全文搜索将使用 pg_trgm）")
+                logger.info("  ℹ️  ParadeDB 扩展不可用（全文搜索将使用 LIKE 回退）")
             
             # 如果 ParadeDB 可用，创建 BM25 索引
             if paradedb_available:
@@ -73,26 +82,26 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
                                 USING bm25 (id, content)
                                 WITH (key_field='id')
                             """))
-                            print("  ✓ BM25 索引已创建")
+                            logger.info("  ✓ BM25 索引已创建")
                         else:
-                            print("  ✓ BM25 索引已存在")
+                            logger.info("  ✓ BM25 索引已存在")
                 except Exception as e:
-                    print(f"  ⚠️  BM25 索引创建失败: {str(e)[:100]}")
-                    print("  提示：全文搜索仍可使用，但性能可能受影响")
+                    logger.warning(f"  ⚠️  BM25 索引创建失败: {str(e)[:100]}")
+                    logger.warning("  提示：全文搜索仍可使用，但性能可能受影响")
                 
         except Exception as e:
-            print(f"  ⚠️  数据库初始化失败: {e}")
-            print("  提示：请确保数据库已安装 pgvector 扩展")
+            logger.error(f"  ⚠️  数据库初始化失败: {e}")
+            logger.error("  提示：请确保数据库已安装 pgvector 扩展")
             raise
     
-    print("✅ 应用启动完成！")
+    logger.info("✅ 应用启动完成！")
     
     yield
     
     # 关闭时
-    print("🛑 应用关闭中...")
+    logger.info("🛑 应用关闭中...")
     await async_engine.dispose()
-    print("✅ 应用已关闭")
+    logger.info("✅ 应用已关闭")
 
 
 def create_app() -> FastAPI:
@@ -108,7 +117,12 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
     
-    # ==================== CORS 中间件 ====================
+    # ==================== 中间件配置 ====================
+    # 日志中间件（最先添加，最后执行）
+    app.add_middleware(LoggingMiddleware)
+    app.add_middleware(PerformanceLoggingMiddleware)
+    
+    # CORS 中间件
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,
