@@ -12,7 +12,7 @@ from ragserver.app.models import User, Base
 from ragserver.app.dependencies.security import get_password_hash
 
 
-@pytest.fixture
+@pytest.fixture(autouse=True)
 async def setup_db(db_session: AsyncSession):
     """设置数据库依赖注入"""
     # 覆盖依赖注入
@@ -27,7 +27,7 @@ async def setup_db(db_session: AsyncSession):
 
 
 @pytest.fixture
-async def test_user(db_session: AsyncSession, setup_db):
+async def test_user(db_session: AsyncSession):
     """创建测试用户"""
     user = User(
         username="testuser",
@@ -46,7 +46,7 @@ class TestRegister:
     """用户注册测试"""
 
     @pytest.mark.asyncio
-    async def test_register_success(self, async_client: AsyncClient, db_session: AsyncSession, setup_db):
+    async def test_register_success(self, async_client: AsyncClient, db_session: AsyncSession):
         """测试成功注册"""
         payload = {
             "username": "newuser",
@@ -102,7 +102,7 @@ class TestRegister:
         assert "用户名或邮箱已存在" in res.json()["detail"]
 
     @pytest.mark.asyncio
-    async def test_register_invalid_username(self, async_client: AsyncClient, setup_db):
+    async def test_register_invalid_username(self, async_client: AsyncClient):
         """测试无效用户名（太短）"""
         payload = {
             "username": "ab",  # 少于3个字符
@@ -115,7 +115,7 @@ class TestRegister:
         assert res.status_code == 422  # Validation error
 
     @pytest.mark.asyncio
-    async def test_register_invalid_password(self, async_client: AsyncClient, setup_db):
+    async def test_register_invalid_password(self, async_client: AsyncClient):
         """测试无效密码（太短）"""
         payload = {
             "username": "newuser",
@@ -128,7 +128,7 @@ class TestRegister:
         assert res.status_code == 422
 
     @pytest.mark.asyncio
-    async def test_register_invalid_email(self, async_client: AsyncClient, setup_db):
+    async def test_register_invalid_email(self, async_client: AsyncClient):
         """测试无效邮箱格式"""
         payload = {
             "username": "newuser",
@@ -188,7 +188,7 @@ class TestLogin:
         assert "用户名或密码错误" in res.json()["detail"]
 
     @pytest.mark.asyncio
-    async def test_login_nonexistent_user(self, async_client: AsyncClient, setup_db):
+    async def test_login_nonexistent_user(self, async_client: AsyncClient):
         """测试不存在的用户"""
         payload = {
             "username_or_email": "nonexistent",
@@ -201,7 +201,7 @@ class TestLogin:
         assert "用户名或密码错误" in res.json()["detail"]
 
     @pytest.mark.asyncio
-    async def test_login_inactive_user(self, async_client: AsyncClient, db_session: AsyncSession, setup_db):
+    async def test_login_inactive_user(self, async_client: AsyncClient, db_session: AsyncSession):
         """测试未激活用户"""
         inactive_user = User(
             username="inactive",
@@ -291,7 +291,7 @@ class TestChangePassword:
         assert "原密码不正确" in res.json()["detail"]
 
     @pytest.mark.asyncio
-    async def test_change_password_without_auth(self, async_client: AsyncClient, setup_db):
+    async def test_change_password_without_auth(self, async_client: AsyncClient):
         """测试未认证修改密码"""
         change_payload = {
             "old_password": "Test1234!",
@@ -332,7 +332,7 @@ class TestAuthIntegration:
     """完整认证流程集成测试"""
 
     @pytest.mark.asyncio
-    async def test_full_auth_flow(self, async_client: AsyncClient, db_session: AsyncSession, setup_db):
+    async def test_full_auth_flow(self, async_client: AsyncClient, db_session: AsyncSession):
         """测试完整的注册-登录-修改密码流程"""
         # 1. 注册新用户
         register_payload = {
@@ -389,7 +389,7 @@ class TestAuthIntegration:
         assert old_login_res.status_code == 400
 
     @pytest.mark.asyncio
-    async def test_register_and_immediate_login(self, async_client: AsyncClient, db_session: AsyncSession, setup_db):
+    async def test_register_and_immediate_login(self, async_client: AsyncClient, db_session: AsyncSession):
         """测试注册后立即登录"""
         # 1. 注册
         register_payload = {

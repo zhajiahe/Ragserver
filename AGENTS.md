@@ -172,7 +172,6 @@ class EmbeddingService:
         self.model = BGEM3FlagModel(
             'BAAI/bge-m3',
             use_fp16=True,
-            device=settings.embedding_device
         )
     
     async def encode(self, texts: List[str]) -> List[List[float]]:

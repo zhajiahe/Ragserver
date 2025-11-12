@@ -28,7 +28,10 @@ def get_password_hash(password: str) -> str:
         str: bcrypt 哈希后的密码字符串
     """
     # 生成盐并哈希密码
-    salt = bcrypt.gensalt()
+    # 在测试/开发环境使用更少的 rounds 以提高速度
+    # 生产环境使用默认的 12 rounds
+    rounds = 4 if settings.debug else 12
+    salt = bcrypt.gensalt(rounds=rounds)
     hashed = bcrypt.hashpw(password.encode('utf-8'), salt)
     return hashed.decode('utf-8')
 
