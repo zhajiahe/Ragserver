@@ -150,6 +150,7 @@ class Settings(BaseSettings):
     # ==================== Embedding 配置 ====================
     default_embedding_model: str = Field(default="BAAI/bge-m3", description="默认 Embedding 模型")
     embedding_dimension: int = Field(default=1024, description="Embedding 向量维度（bge-m3: 1024维）")
+    embedding_batch_size: int = Field(default=50, description="Embedding 批处理大小")
     
     # ==================== LLM 配置 ====================
     default_llm_provider: str = Field(default="siliconflow", description="默认 LLM 提供商")
@@ -174,6 +175,9 @@ class Settings(BaseSettings):
     # 混合搜索权重
     hybrid_vector_weight: float = Field(default=0.7, description="混合搜索向量权重")
     hybrid_fulltext_weight: float = Field(default=0.3, description="混合搜索全文权重")
+    
+    # ==================== 用户配额配置 ====================
+    max_collections_per_user: int = Field(default=100, description="每个用户最大知识库数量")
     
     # ==================== 日志配置 ====================
     log_format: str = Field(

@@ -49,7 +49,7 @@ async def verify_document_access(db: AsyncSession, document_id: UUID, user_id: U
 
 @router.post(
     "/process",
-    status_code=status.HTTP_200_OK,
+    status_code=status.HTTP_202_ACCEPTED,
     summary="处理文档（批量）"
 )
 async def process_documents(
@@ -102,7 +102,7 @@ async def process_documents(
             })
     
     return {
-        "message": f"已处理 {len(processed_ids)} 个文档",
+        "message": f"已提交 {len(processed_ids)} 个文档进行处理",
         "document_ids": processed_ids,
         "results": results,
         "errors": errors if errors else None,
@@ -111,7 +111,7 @@ async def process_documents(
 
 @router.post(
     "/reprocess",
-    status_code=status.HTTP_200_OK,
+    status_code=status.HTTP_202_ACCEPTED,
     summary="重新处理文档"
 )
 async def reprocess_documents(
@@ -154,7 +154,7 @@ async def reprocess_documents(
             })
     
     return {
-        "message": f"已重新处理 {len(reprocessed_ids)} 个文档",
+        "message": f"已提交 {len(reprocessed_ids)} 个文档进行重新处理",
         "document_ids": reprocessed_ids,
         "results": results,
         "errors": errors if errors else None,

@@ -117,96 +117,86 @@ async def fulltext_search(
     top_k: int
 ) -> List[tuple]:
     """
-    全文搜索 (BM25 或 LIKE 回退)
+    全文搜索 (ParadeDB BM25)
+    
+    使用 ParadeDB BM25 索引进行全文搜索
+    
+    Args:
+        db: 数据库会话
+        query: 搜索查询
+        user_id: 用户ID（可选）
+        collection_ids: 知识库ID列表（可选）
+        top_k: 返回结果数量
     
     Returns:
         List[tuple]: [(chunk, score), ...]
+        
+    Raises:
+        HTTPException: 如果 BM25 索引不可用
     """
-    try:
-        # 首先检查 BM25 索引是否存在
-        check_index_query = text("""
-            SELECT indexname FROM pg_indexes 
-            WHERE tablename = 'document_chunks' 
-            AND indexname = 'document_chunks_bm25_idx'
-        """)
-        index_result = await db.execute(check_index_query)
-        has_bm25_index = index_result.scalar() is not None
-        
-        if has_bm25_index:
-            # 使用 ParadeDB BM25 搜索
-            base_query = """
-                SELECT 
-                    dc.*,
-                    paradedb.score(dc.id) as score
-                FROM document_chunks dc
-                WHERE dc.id @@@ paradedb.parse(:query)
-            """
-            
-            params = {"query": query}
-            
-            # 添加用户过滤
-            if user_id:
-                base_query += " AND dc.user_id = :user_id"
-                params["user_id"] = str(user_id)
-            
-            # 添加知识库过滤
-            if collection_ids:
-                placeholders = ",".join([f":cid_{i}" for i in range(len(collection_ids))])
-                base_query += f" AND dc.collection_id IN ({placeholders})"
-                for i, cid in enumerate(collection_ids):
-                    params[f"cid_{i}"] = str(cid)
-            
-            # 排序和限制
-            base_query += " ORDER BY score DESC LIMIT :limit"
-            params["limit"] = top_k
-            
-            result = await db.execute(text(base_query), params)
-            rows = result.fetchall()
-            
-            # 转换为 (chunk, score) 格式
-            results = []
-            for row in rows:
-                # 重新查询完整的 DocumentChunk 对象
-                chunk_result = await db.execute(
-                    select(DocumentChunk).where(DocumentChunk.id == row.id)
-                )
-                chunk = chunk_result.scalar_one_or_none()
-                if chunk:
-                    results.append((chunk, float(row.score)))
-            
-            logger.info(f"BM25 搜索完成，找到 {len(results)} 个结果")
-            return results
-        else:
-            logger.info("BM25 索引不存在，使用 LIKE 搜索")
-            raise Exception("BM25 index not available")
-        
-    except Exception as e:
-        logger.debug(f"BM25 搜索不可用，使用 LIKE 搜索: {e}")
-        # 回退到简单的 LIKE 搜索
-        # 使用 PostgreSQL 的 ts_rank 进行简单的文本相关性评分
-        query_stmt = select(
-            DocumentChunk,
-            # 简单评分：匹配次数
-            func.cast(
-                func.length(DocumentChunk.content) - 
-                func.length(func.replace(func.lower(DocumentChunk.content), func.lower(query), '')),
-                Integer
-            ).label('score')
-        ).where(
-            DocumentChunk.content.ilike(f"%{query}%")
+    # 检查 BM25 索引是否存在
+    check_index_query = text("""
+        SELECT indexname FROM pg_indexes 
+        WHERE tablename = 'document_chunks' 
+        AND indexname = 'document_chunks_bm25_idx'
+    """)
+    index_result = await db.execute(check_index_query)
+    has_bm25_index = index_result.scalar() is not None
+    
+    if not has_bm25_index:
+        logger.error("BM25 索引不存在，全文搜索不可用")
+        from fastapi import HTTPException, status
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="全文搜索服务不可用：BM25 索引未创建。请联系管理员。"
         )
-        
-        if user_id:
-            query_stmt = query_stmt.where(DocumentChunk.user_id == user_id)
-        
-        if collection_ids:
-            query_stmt = query_stmt.where(DocumentChunk.collection_id.in_(collection_ids))
-        
-        # 按评分排序
-        query_stmt = query_stmt.order_by(text('score DESC')).limit(top_k)
-        
-        result = await db.execute(query_stmt)
-        return result.all()
+    
+    # 使用 ParadeDB BM25 搜索
+    # ParadeDB 查询语法: content:term 或直接使用 term（默认搜索所有字段）
+    base_query = """
+        SELECT 
+            dc.*,
+            paradedb.score(dc.id) as score
+        FROM document_chunks dc
+        WHERE dc.id @@@ paradedb.parse(:query)
+    """
+    
+    # 构造 ParadeDB 查询字符串：content:query
+    paradedb_query = f"content:{query}"
+    params = {"query": paradedb_query}
+    
+    # 添加用户过滤
+    if user_id:
+        base_query += " AND dc.user_id = :user_id"
+        params["user_id"] = str(user_id)
+    
+    # 添加知识库过滤
+    if collection_ids:
+        placeholders = ",".join([f":cid_{i}" for i in range(len(collection_ids))])
+        base_query += f" AND dc.collection_id IN ({placeholders})"
+        for i, cid in enumerate(collection_ids):
+            params[f"cid_{i}"] = str(cid)
+    
+    # 排序和限制
+    base_query += " ORDER BY score DESC LIMIT :limit"
+    params["limit"] = top_k
+    
+    result = await db.execute(text(base_query), params)
+    rows = result.fetchall()
+    
+    # 转换为 (chunk, score) 格式
+    results = []
+    for row in rows:
+        # 重新查询完整的 DocumentChunk 对象
+        chunk_result = await db.execute(
+            select(DocumentChunk).where(DocumentChunk.id == row.id)
+        )
+        chunk = chunk_result.scalar_one_or_none()
+        if chunk:
+            results.append((chunk, float(row.score)))
+    
+    logger.info(f"BM25 搜索完成，找到 {len(results)} 个结果")
+    return results
 
 
 async def hybrid_search(
