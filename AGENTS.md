@@ -5,8 +5,8 @@
 ## 项目概述
 
 **项目名称**: AI知识库管理平台后端系统  
-**技术栈**: FastAPI + PostgreSQL + pgvector + Redis + MinIO  
-**主要功能**: 文档智能处理、向量检索、知识库管理、API服务
+**技术栈**: FastAPI + PostgreSQL + pgvector + MinIO + SiliconFlow API  
+**主要功能**: 文档智能处理、向量检索、知识库管理、API服务、知识库分享
 
 ## 核心原则
 
@@ -24,45 +24,38 @@
 
 ```
 ragserver/
-├── tests/ 测试脚本
-├── app/
-│   ├── models.py           # SQLAlchemy 数据模型
-│   ├── api/
-│   │   ├── files.py    #文件上传接口
-│   │   ├── users.py    # 用户管理接口
-│   │   ├── kb.py       # 知识库管理接口
-│   │   ├── documents.py # 文档管理接口
-│   │   └── search.py   # 搜索接口
-│   ├── services/
-│   │   ├── document_pipeline.py # 文档处理流水线
-│   │   ├── embedding.py    # Embedding服务
-│   │   ├── parser.py       # 文档解析服务
-│   │   ├── chunking.py     # 分块服务
-│   │   └── search.py       # 搜索服务
-│   └── utils/
-│       ├── minio_client.py # MinIO工具
-│       └── redis_client.py # Redis工具
-├── config.py               # 配置管理
-├── database.py             # 数据库连接
-└── main.py                 # FastAPI应用入口
-
+├── ragserver/
+│   ├── app/
+│   │   ├── models.py              # 数据模型（User, Collection, Document, DocumentChunk, CollectionShare）
+│   │   ├── api/                   # API 路由
+│   │   │   ├── auth.py           # 认证接口
+│   │   │   ├── collections.py   # 知识库接口
+│   │   │   ├── documents.py     # 文档接口
+│   │   │   ├── parser.py        # 解析接口
+│   │   │   ├── chunks.py        # 分块接口
+│   │   │   └── search.py        # 搜索接口
+│   │   ├── dependencies/         # 依赖注入（db, security）
+│   │   ├── services/
+│   │   │   └── document_pipeline.py  # 文档处理流水线
+│   │   └── utils/
+│   │       ├── minio_client.py       # 对象存储
+│   │       ├── embedding_service.py  # 向量服务
+│   │       ├── parsers.py           # 文档解析
+│   │       └── chunkers.py          # 文本分块
+│   ├── config.py                 # 配置（settings对象）
+│   └── main.py                   # 应用入口
+├── tests/                        # 测试
+├── Makefile                      # 常用命令
+└── pyproject.toml                # 依赖管理
 ```
 
-## 数据模型设计
+## 数据模型（详见 ER.md）
 
-### 核心实体
-
-参考 `ER.md` 了解完整的数据模型。关键实体：
-
-1. **User** - 用户表
-2. **Collection** - 知识库表
-3. **Document** - 文档表
-4. **DocumentChunk** - 文档分块表（含向量）
-5. **APIKey** - API密钥表
-6. **APIUsageLog** - API使用日志表
-
-### 重要规则
-- pass
+1. **User** - 用户（所有资源按 user_id 隔离）
+2. **Collection** - 知识库（settings 字段存储 JSONB 配置）
+3. **Document** - 文档（status: pending/processing/completed/failed）
+4. **DocumentChunk** - 分块（含 1024维向量，pgvector）
+5. **CollectionShare** - 分享链接（share_token 用于公开访问）
 
 ## 开发规范
 
@@ -164,216 +157,131 @@ async def handle_document_upload(document_id: UUID, db: AsyncSession):
 ### 6. Embedding 生成
 
 ```python
-# ✅ 正确：使用本地 bge-m3 模型
-from FlagEmbedding import BGEM3FlagModel
+# ✅ 正确：使用 SiliconFlow API 生成向量
+from ragserver.app.utils.embedding_service import embedding_service
 
-class EmbeddingService:
-    def __init__(self):
-        self.model = BGEM3FlagModel(
-            'BAAI/bge-m3',
-            use_fp16=True,
-        )
-    
-    async def encode(self, texts: List[str]) -> List[List[float]]:
-        """生成向量"""
-        # 使用线程池避免阻塞事件循环
-        embeddings = await asyncio.to_thread(
-            self.model.encode,
-            texts,
-            batch_size=settings.embedding_batch_size,
-            max_length=8192
-        )
-        return embeddings['dense_vecs'].tolist()
-```
+# 生成单个文本向量
+embedding = await embedding_service.encode_single("查询文本")
 
-### 7. 分块配置
+# 批量生成向量
+texts = ["文本1", "文本2", "文本3"]
+embeddings = await embedding_service.encode(texts)
 
-```python
-# ✅ 正确：从 JSONB 字段读取配置
-async def get_chunking_config(kb: Collection, doc: Optional[Document] = None):
-    """获取分块配置（文档级优先，知识库级备选）"""
-    if doc and doc.chunking_config:
-        return doc.chunking_config
-    
-    if kb.settings and 'chunking_config' in kb.settings:
-        return kb.settings['chunking_config']
-    
-    # 默认配置
-    return {
-        "strategy_type": "paragraph",
-        "config": {
-            "max_chunk_size": 800,
-            "min_chunk_size": 100,
-            "merge_short_paragraphs": True
-        }
-    }
-```
-
-### 8. 向量搜索
-
-```python
-# ✅ 正确：使用 pgvector 的余弦相似度
-from pgvector.sqlalchemy import Vector
-
-async def search_chunks(
-    db: AsyncSession,
-    query_embedding: List[float],
-    kb_id: UUID,
-    user_id: UUID,
-    top_k: int = 10,
-    threshold: float = 0.7
-):
-    """向量搜索"""
-    result = await db.execute(
-        select(
-            DocumentChunk,
-            (1 - DocumentChunk.content_embedding.cosine_distance(query_embedding)).label('similarity')
-        )
-        .where(
-            DocumentChunk.collection_id == kb_id,
-            DocumentChunk.user_id == user_id,
-            (1 - DocumentChunk.content_embedding.cosine_distance(query_embedding)) > threshold
-        )
-        .order_by(DocumentChunk.content_embedding.cosine_distance(query_embedding))
-        .limit(top_k)
-    )
-    return result.all()
-```
-
-## 错误处理
-
-```python
-# ✅ 正确：使用 HTTPException
-from fastapi import HTTPException, status
-
-@router.delete("/{kb_id}")
-async def delete_kb(kb_id: UUID, current_user: User = Depends(get_current_user)):
-    kb = await get_kb(db, kb_id, current_user.id)
-    if not kb:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Collection not found"
-        )
-    
-    if kb.status == "archived":
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Cannot delete archived Collection"
-        )
-    
-    await db.delete(kb)
-    await db.commit()
-    return {"message": "Collection deleted successfully"}
-```
-
-## 性能优化建议
-
-### 1. 数据库查询优化
-
-```python
-# ✅ 正确：使用 joinedload 预加载关联
-from sqlalchemy.orm import joinedload
-
-result = await db.execute(
-    select(Document)
-    .options(joinedload(Document.collection))
-    .where(Document.id == doc_id)
+# 自动分批处理大量文本
+embeddings = await embedding_service.encode_batch(
+    texts,
+    batch_size=settings.embedding_batch_size
 )
 ```
 
-### 2. 批量操作
+### 7. 文本分块
 
 ```python
-# ✅ 正确：批量插入
-chunks = [DocumentChunk(...) for ... in ...]
+# 使用分块服务
+from ragserver.app.utils.chunkers import chunk_text
+
+chunking_config = {
+    "strategy_type": "fixed",  # fixed/paragraph/semantic
+    "config": {
+        "chunk_size": 1000,
+        "chunk_overlap": 200,
+        "min_chunk_size": 100
+    }
+}
+
+chunks = await chunk_text(content_text, chunking_config)
+```
+
+### 8. 搜索（三种模式）
+
+```python
+# 1. 向量搜索（语义）
+SearchRequest(query="查询", mode="vector", top_k=10, threshold=0.7)
+
+# 2. 全文搜索（关键词）
+SearchRequest(query="关键词", mode="fulltext", top_k=10)
+
+# 3. 混合搜索（向量+全文）
+SearchRequest(
+    query="查询",
+    mode="hybrid",
+    vector_weight=0.7,
+    fulltext_weight=0.3
+)
+```
+
+## 关键注意事项
+
+### 1. 错误处理
+```python
+from fastapi import HTTPException, status
+
+raise HTTPException(status_code=404, detail="Resource not found")
+```
+
+### 2. MinIO 对象存储
+```python
+from ragserver.app.utils.minio_client import minio_client
+
+# 上传
+await minio_client.upload_file(bucket, key, file_bytes, content_type)
+
+# 下载
+response = await minio_client.download_file(bucket, key)
+content = await response["Body"].read()
+```
+
+### 3. 批量操作
+```python
+# ✅ 正确
 db.add_all(chunks)
 await db.commit()
 
-# ❌ 错误：逐个插入
+# ❌ 错误（太慢）
 for chunk in chunks:
     db.add(chunk)
-    await db.commit()  # 太慢！
+    await db.commit()
 ```
 
-### 3. 缓存
-
-```python
-# ✅ 正确：使用 Redis 缓存热数据
-from app.utils.redis_client import redis_client
-
-# 缓存查询向量
-cache_key = f"query_embedding:{query_hash}"
-cached = await redis_client.get(cache_key)
-if cached:
-    return json.loads(cached)
-
-embedding = await embedding_service.encode([query])
-await redis_client.setex(
-    cache_key,
-    settings.query_vector_cache_ttl,
-    json.dumps(embedding)
-)
-```
-
-## 环境设置
+## 快速开始
 
 ```bash
-# 1. 复制配置
-cp env.example .env
+# 1. 环境准备
+source .venv/bin/activate  # 激活 uv 虚拟环境
+cp env.example .env        # 配置环境变量
 
-# 2. 编辑配置（填入API密钥等）
-vim .env
+# 2. 启动服务
+make install      # 安装依赖
+make docker-up    # 启动 PostgreSQL + MinIO
+make upgrade      # 数据库迁移
+make dev          # 启动开发服务器
 
-# 3. 安装依赖
-make install
-
-# 4. 启动基础设施（Docker）
-make docker-up
-
-# 5. 运行数据库迁移
-make upgrade
-
-# 6. 启动应用
-make dev  # 开发模式
-# 或
-make start  # 生产模式（PM2）
+# 3. 常用命令
+make test         # 运行测试
+make lint         # 代码检查
+make format       # 格式化
 ```
 
-## 常用命令
+## 重要配置（.env）
 
 ```bash
-# 开发
-make dev              # 启动开发服务器（热重载）
-make test             # 运行测试
-make lint             # 代码检查
-make format           # 格式化代码
-
-# 部署
-make up               # 启动所有服务（Docker + PM2）
-make down             # 停止所有服务
-make restart          # 重启服务
-make status           # 查看状态
-
 # 数据库
-make migrate msg="..." # 创建迁移
-make upgrade          # 应用迁移
-make downgrade        # 回滚迁移
+POSTGRES_HOST=localhost
+POSTGRES_DB=ragserver
 
-# 清理
-make clean            # 清理临时文件
-make docker-clean     # 清理 Docker 数据
+# 对象存储
+MINIO_HOST=localhost
+
+# API 密钥（必须配置）
+SILICONFLOW_API_KEY=sk-xxx
+
+# JWT
+JWT_SECRET_KEY=xxx
 ```
 
-## 文档参考
+## 参考文档
 
-- `PRD.md` - 产品需求文档
-- `ER.md` - 数据模型文档
-- `Makefile` - 构建命令
-- `ragserver/config.py` - 配置定义
-
-## 获取帮助
-
-1. 查看文档：上述参考文档
-2. 查看代码注释：所有关键函数都有详细注释
-3. 运行 `make help` 查看可用命令
+- `PRD.md` - 产品需求和完整功能说明
+- `ER.md` - 数据模型详细定义
+- `Makefile` - 所有可用命令
 

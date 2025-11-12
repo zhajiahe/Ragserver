@@ -5,7 +5,6 @@ SHELL := /bin/bash
 # 环境变量
 UV := uv
 VENV := .venv
-PM2 := pm2
 
 # 颜色输出
 BLUE := \033[0;34m
@@ -55,21 +54,14 @@ upgrade: ## 应用数据库迁移
 
 dev: ## 启动开发服务器
 	@echo "$(BLUE)Starting development server...$(NC)"
-	@source $(VENV)/bin/activate && uvicorn ragserver.main:app
+	@source $(VENV)/bin/activate && uvicorn ragserver.main:app --reload --host 0.0.0.0 --port 8000
 
-start: ## 启动生产服务 (PM2)
-	@echo "$(BLUE)Starting services...$(NC)"
-	@$(PM2) start ecosystem.config.js
-	@$(PM2) list
+start: ## 启动生产服务
+	@echo "$(BLUE)Starting production server...$(NC)"
+	@source $(VENV)/bin/activate && uvicorn ragserver.main:app --host 0.0.0.0 --port 8000
 
-stop: ## 停止 PM2 服务
-	@$(PM2) stop ecosystem.config.js
-
-restart: ## 重启 PM2 服务
-	@$(PM2) restart ecosystem.config.js
-
-status: ## 查看服务状态
-	@$(PM2) list
+stop: ## (提示: 使用 Ctrl+C 停止服务)
+	@echo "$(YELLOW)Use Ctrl+C to stop the server$(NC)"
 
 ##@ 测试
 
@@ -95,12 +87,13 @@ setup: install docker-up upgrade ## 一键设置开发环境
 	@echo ""
 	@echo "$(YELLOW)Next:$(NC) make dev"
 
-up: docker-up start ## 启动所有服务
-	@echo "$(GREEN)✓ All services running!$(NC)"
-	@echo "API: http://localhost:8000/docs"
+up: docker-up ## 启动 Docker 服务
+	@echo "$(GREEN)✓ Docker services running!$(NC)"
+	@echo ""
+	@echo "$(YELLOW)Next:$(NC) make dev (or make start for production)"
 
-down: stop docker-down ## 停止所有服务
-	@echo "$(GREEN)✓ All services stopped$(NC)"
+down: docker-down ## 停止 Docker 服务
+	@echo "$(GREEN)✓ Docker services stopped$(NC)"
 
 
 ##@lint
