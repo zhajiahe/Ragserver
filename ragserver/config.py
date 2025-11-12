@@ -24,6 +24,12 @@ class Settings(BaseSettings):
     debug: bool = Field(default=True, description="调试模式")
     log_level: str = Field(default="INFO", description="日志级别")
     api_port: int = Field(default=8000, description="API 端口")
+    reload: bool = Field(default=False, description="热重载")
+    
+    # API文档配置
+    docs_url: Optional[str] = Field(default="/docs", description="Swagger UI URL")
+    redoc_url: Optional[str] = Field(default="/redoc", description="ReDoc URL")
+    openapi_url: Optional[str] = Field(default="/openapi.json", description="OpenAPI JSON URL")
     
     # ==================== 数据库配置 ====================
     # PostgreSQL 配置
