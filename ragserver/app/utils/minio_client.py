@@ -15,6 +15,7 @@ from ragserver.config import settings
 
 class AsyncMinioClient:
     def __init__(self):
+        """初始化 MinIO 异步客户端。"""
         self.session = aioboto3.Session()
         self.endpoint_url = f"http://{settings.minio_host}:{settings.minio_port}"
         self.access_key = settings.minio_access_key
@@ -105,7 +106,8 @@ class AsyncMinioClient:
         return mime.from_buffer(file_content)
 
     def _generate_object_key(self, md5_hash: str, extension: str = "") -> str:
-        """生成对象存储的 key
+        """生成对象存储的 key。
+
         格式: md5[:2]/md5[2:4]/md5.extension
         使用前缀分层可以提高性能
         """

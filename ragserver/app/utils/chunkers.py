@@ -13,6 +13,13 @@ class BaseChunker(ABC):
     """文本分割器基类，提供公共的工具方法"""
 
     def __init__(self, chunk_size: int = 1000, chunk_overlap: int = 200, min_chunk_size: int = 100):
+        """初始化分块器。
+
+        Args:
+            chunk_size: 目标块大小
+            chunk_overlap: 块之间的重叠大小
+            min_chunk_size: 最小块大小
+        """
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
         self.min_chunk_size = min_chunk_size

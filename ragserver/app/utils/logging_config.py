@@ -1,4 +1,5 @@
-"""日志配置模块
+"""日志配置模块。
+
 使用 loguru 进行日志管理
 """
 
@@ -16,9 +17,15 @@ def setup_logging():
     logger.remove()
 
     # 添加控制台输出
+    log_format = (
+        "<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | "
+        "<level>{level: <8}</level> | "
+        "<cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - "
+        "<level>{message}</level>"
+    )
     logger.add(
         sys.stdout,
-        format="<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>",
+        format=log_format,
         level=settings.log_level,
         colorize=True,
     )

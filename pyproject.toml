@@ -52,6 +52,7 @@ dependencies = [
     "img2pdf>=0.6.1",
     "pymupdf>=1.26.5",
     "fastapi-radar>=0.3.4",
+    "pre-commit>=4.4.0",
 ]
 
 [project.packages]
@@ -111,4 +112,11 @@ lint.ignore = [
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
+
+[tool.bandit]
+exclude_dirs = ["tests", ".venv", "venv", "build", "dist"]
+skips = ["B101", "B601"]  # B101: assert_used (needed in tests), B601: paramiko calls
+
+[tool.bandit.assert_used]
+skips = ["*/test_*.py", "*/tests/*"]
 

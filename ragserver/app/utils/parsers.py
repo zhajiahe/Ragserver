@@ -76,6 +76,7 @@ class PDFParser(BaseParser):
                 - dpi: PDF 转图片的 DPI，默认 144
                 - max_concurrent: 最大并发数，默认 30
                 - extract_images: 是否提取图片，默认 False
+            **kwargs: 额外的参数（保留用于扩展）
 
         Returns:
             str: Markdown 格式的文档内容
@@ -197,6 +198,7 @@ class HTMLParser(BaseParser):
             file_content: 文件内容
             filename: 文件名
             preserve_links: 是否保留链接（转为 Markdown 格式）
+            **kwargs: 额外的参数（保留用于扩展）
 
         Returns:
             str: Markdown 格式的文档内容
@@ -258,6 +260,7 @@ class ExcelParser(BaseParser):
             file_content: 文件内容
             filename: 文件名
             file_type: 文件类型 (xlsx, xls, csv)
+            **kwargs: 额外的参数（保留用于扩展）
 
         Returns:
             str: Markdown 格式的文档内容
@@ -370,6 +373,7 @@ class ImageParser(BaseParser):
             ocr_config: OCR 配置
                 - model: OCR 模型名称，默认 'deepseek-ai/DeepSeek-OCR'
                 - max_concurrent: 最大并发数，默认 30
+            **kwargs: 额外的参数（保留用于扩展）
 
         Returns:
             str: Markdown 格式的文档内容
