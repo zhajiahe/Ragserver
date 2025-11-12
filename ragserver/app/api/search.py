@@ -1,13 +1,14 @@
 """
 搜索 API
 """
-from typing import List, Optional
+from typing import List, Optional, Literal
 from uuid import UUID
 from datetime import datetime, timezone
+from enum import Enum
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field, ConfigDict
-from sqlalchemy import select, func
+from sqlalchemy import select, func, text, Integer
 from sqlalchemy.ext.asyncio import AsyncSession
 from loguru import logger
 
@@ -22,12 +23,24 @@ router = APIRouter(tags=["搜索"])
 
 # ==================== Pydantic Schemas ====================
 
+class SearchMode(str, Enum):
+    """搜索模式"""
+    VECTOR = "vector"  # 向量搜索
+    FULLTEXT = "fulltext"  # 全文搜索 (BM25)
+    HYBRID = "hybrid"  # 混合搜索
+
+
 class SearchRequest(BaseModel):
     """搜索请求"""
     query: str = Field(..., min_length=1, max_length=1000, description="搜索查询")
+    mode: SearchMode = Field(default=SearchMode.VECTOR, description="搜索模式: vector/fulltext/hybrid")
     top_k: int = Field(default=10, ge=1, le=100, description="返回结果数量")
-    threshold: float = Field(default=0.7, ge=0.0, le=1.0, description="相似度阈值")
+    threshold: float = Field(default=0.7, ge=0.0, le=1.0, description="相似度阈值（向量搜索）")
     collection_ids: Optional[List[UUID]] = Field(default=None, description="知识库ID列表（可选）")
+    
+    # 混合搜索权重配置
+    vector_weight: float = Field(default=0.7, ge=0.0, le=1.0, description="向量搜索权重（混合模式）")
+    fulltext_weight: float = Field(default=0.3, ge=0.0, le=1.0, description="全文搜索权重（混合模式）")
 
 
 class SearchResultItem(BaseModel):
@@ -46,9 +59,225 @@ class SearchResultItem(BaseModel):
 class SearchResponse(BaseModel):
     """搜索响应"""
     query: str
+    mode: str
     total: int
     results: List[SearchResultItem]
     search_time_ms: int
+
+
+# ==================== Helper Functions ====================
+
+async def vector_search(
+    db: AsyncSession,
+    query: str,
+    user_id: Optional[UUID],
+    collection_ids: Optional[List[UUID]],
+    top_k: int,
+    threshold: float
+) -> List[tuple]:
+    """
+    向量搜索
+    
+    Returns:
+        List[tuple]: [(chunk, similarity), ...]
+    """
+    # 生成查询向量
+    query_embedding = await embedding_service.encode_single(query)
+    
+    # 构建查询
+    query_stmt = select(
+        DocumentChunk,
+        (1 - DocumentChunk.content_embedding.cosine_distance(query_embedding)).label('similarity')
+    ).where(
+        (1 - DocumentChunk.content_embedding.cosine_distance(query_embedding)) >= threshold
+    )
+    
+    # 添加用户过滤
+    if user_id:
+        query_stmt = query_stmt.where(DocumentChunk.user_id == user_id)
+    
+    # 添加知识库过滤
+    if collection_ids:
+        query_stmt = query_stmt.where(DocumentChunk.collection_id.in_(collection_ids))
+    
+    # 排序和限制
+    query_stmt = query_stmt.order_by(
+        DocumentChunk.content_embedding.cosine_distance(query_embedding)
+    ).limit(top_k)
+    
+    result = await db.execute(query_stmt)
+    return result.all()
+
+
+async def fulltext_search(
+    db: AsyncSession,
+    query: str,
+    user_id: Optional[UUID],
+    collection_ids: Optional[List[UUID]],
+    top_k: int
+) -> List[tuple]:
+    """
+    全文搜索 (BM25 或 LIKE 回退)
+    
+    Returns:
+        List[tuple]: [(chunk, score), ...]
+    """
+    try:
+        # 首先检查 BM25 索引是否存在
+        check_index_query = text("""
+            SELECT indexname FROM pg_indexes 
+            WHERE tablename = 'document_chunks' 
+            AND indexname = 'document_chunks_bm25_idx'
+        """)
+        index_result = await db.execute(check_index_query)
+        has_bm25_index = index_result.scalar() is not None
+        
+        if has_bm25_index:
+            # 使用 ParadeDB BM25 搜索
+            base_query = """
+                SELECT 
+                    dc.*,
+                    paradedb.score(dc.id) as score
+                FROM document_chunks dc
+                WHERE dc.id @@@ paradedb.parse(:query)
+            """
+            
+            params = {"query": query}
+            
+            # 添加用户过滤
+            if user_id:
+                base_query += " AND dc.user_id = :user_id"
+                params["user_id"] = str(user_id)
+            
+            # 添加知识库过滤
+            if collection_ids:
+                placeholders = ",".join([f":cid_{i}" for i in range(len(collection_ids))])
+                base_query += f" AND dc.collection_id IN ({placeholders})"
+                for i, cid in enumerate(collection_ids):
+                    params[f"cid_{i}"] = str(cid)
+            
+            # 排序和限制
+            base_query += " ORDER BY score DESC LIMIT :limit"
+            params["limit"] = top_k
+            
+            result = await db.execute(text(base_query), params)
+            rows = result.fetchall()
+            
+            # 转换为 (chunk, score) 格式
+            results = []
+            for row in rows:
+                # 重新查询完整的 DocumentChunk 对象
+                chunk_result = await db.execute(
+                    select(DocumentChunk).where(DocumentChunk.id == row.id)
+                )
+                chunk = chunk_result.scalar_one_or_none()
+                if chunk:
+                    results.append((chunk, float(row.score)))
+            
+            logger.info(f"BM25 搜索完成，找到 {len(results)} 个结果")
+            return results
+        else:
+            logger.info("BM25 索引不存在，使用 LIKE 搜索")
+            raise Exception("BM25 index not available")
+        
+    except Exception as e:
+        logger.debug(f"BM25 搜索不可用，使用 LIKE 搜索: {e}")
+        # 回退到简单的 LIKE 搜索
+        # 使用 PostgreSQL 的 ts_rank 进行简单的文本相关性评分
+        query_stmt = select(
+            DocumentChunk,
+            # 简单评分：匹配次数
+            func.cast(
+                func.length(DocumentChunk.content) - 
+                func.length(func.replace(func.lower(DocumentChunk.content), func.lower(query), '')),
+                Integer
+            ).label('score')
+        ).where(
+            DocumentChunk.content.ilike(f"%{query}%")
+        )
+        
+        if user_id:
+            query_stmt = query_stmt.where(DocumentChunk.user_id == user_id)
+        
+        if collection_ids:
+            query_stmt = query_stmt.where(DocumentChunk.collection_id.in_(collection_ids))
+        
+        # 按评分排序
+        query_stmt = query_stmt.order_by(text('score DESC')).limit(top_k)
+        
+        result = await db.execute(query_stmt)
+        return result.all()
+
+
+async def hybrid_search(
+    db: AsyncSession,
+    query: str,
+    user_id: Optional[UUID],
+    collection_ids: Optional[List[UUID]],
+    top_k: int,
+    threshold: float,
+    vector_weight: float,
+    fulltext_weight: float
+) -> List[tuple]:
+    """
+    混合搜索 (向量 + 全文)
+    
+    Returns:
+        List[tuple]: [(chunk, combined_score), ...]
+    """
+    # 1. 执行向量搜索
+    vector_results = await vector_search(
+        db, query, user_id, collection_ids, top_k * 2, threshold
+    )
+    
+    # 2. 执行全文搜索
+    fulltext_results = await fulltext_search(
+        db, query, user_id, collection_ids, top_k * 2
+    )
+    
+    # 3. 合并结果
+    # 使用字典存储每个 chunk 的分数
+    chunk_scores = {}
+    
+    # 添加向量搜索结果
+    for chunk, similarity in vector_results:
+        chunk_scores[chunk.id] = {
+            'chunk': chunk,
+            'vector_score': float(similarity),
+            'fulltext_score': 0.0
+        }
+    
+    # 添加全文搜索结果
+    for chunk, score in fulltext_results:
+        if chunk.id in chunk_scores:
+            chunk_scores[chunk.id]['fulltext_score'] = float(score)
+        else:
+            chunk_scores[chunk.id] = {
+                'chunk': chunk,
+                'vector_score': 0.0,
+                'fulltext_score': float(score)
+            }
+    
+    # 4. 计算综合分数并排序
+    combined_results = []
+    for chunk_id, scores in chunk_scores.items():
+        # 归一化分数（如果需要）
+        vector_score = scores['vector_score']
+        fulltext_score = scores['fulltext_score']
+        
+        # 计算加权综合分数
+        combined_score = (
+            vector_weight * vector_score +
+            fulltext_weight * fulltext_score
+        )
+        
+        combined_results.append((scores['chunk'], combined_score))
+    
+    # 按综合分数排序
+    combined_results.sort(key=lambda x: x[1], reverse=True)
+    
+    # 返回 top_k 结果
+    return combined_results[:top_k]
 
 
 # ==================== API Endpoints ====================
@@ -63,66 +292,64 @@ async def search(
     
     - 需要认证
     - 支持多知识库搜索
-    - 基于向量相似度搜索
+    - 支持三种搜索模式：vector（向量）、fulltext（全文）、hybrid（混合）
     """
     import time
     start_time = time.time()
     
     try:
-        # 1. 生成查询向量
-        logger.info(f"用户 {current_user.id} 搜索: {req.query}")
-        query_embedding = await embedding_service.encode_single(req.query)
+        logger.info(f"用户 {current_user.id} {req.mode.value} 搜索: {req.query}")
         
-        # 2. 构建查询条件
-        query_stmt = select(
-            DocumentChunk,
-            (1 - DocumentChunk.content_embedding.cosine_distance(query_embedding)).label('similarity')
-        ).where(
-            DocumentChunk.user_id == current_user.id,
-            (1 - DocumentChunk.content_embedding.cosine_distance(query_embedding)) >= req.threshold
-        )
-        
-        # 如果指定了知识库列表，则限定范围
-        if req.collection_ids:
-            query_stmt = query_stmt.where(
-                DocumentChunk.collection_id.in_(req.collection_ids)
+        # 根据搜索模式选择搜索方法
+        if req.mode == SearchMode.VECTOR:
+            rows = await vector_search(
+                db, req.query, current_user.id, req.collection_ids, 
+                req.top_k, req.threshold
+            )
+        elif req.mode == SearchMode.FULLTEXT:
+            rows = await fulltext_search(
+                db, req.query, current_user.id, req.collection_ids, req.top_k
+            )
+        elif req.mode == SearchMode.HYBRID:
+            rows = await hybrid_search(
+                db, req.query, current_user.id, req.collection_ids,
+                req.top_k, req.threshold, req.vector_weight, req.fulltext_weight
+            )
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"不支持的搜索模式: {req.mode}"
             )
         
-        # 3. 按相似度排序并限制结果数量
-        query_stmt = query_stmt.order_by(
-            DocumentChunk.content_embedding.cosine_distance(query_embedding)
-        ).limit(req.top_k)
-        
-        # 4. 执行查询
-        result = await db.execute(query_stmt)
-        rows = result.all()
-        
-        # 5. 构建响应
+        # 构建响应
         results = []
-        for chunk, similarity in rows:
+        for chunk, score in rows:
             results.append(SearchResultItem(
                 chunk_id=chunk.id,
                 document_id=chunk.document_id,
                 collection_id=chunk.collection_id,
                 content=chunk.content,
-                similarity=float(similarity),
+                similarity=float(score),
                 metadata=chunk.meta or {},
                 chunk_index=chunk.chunk_index
             ))
         
         search_time_ms = int((time.time() - start_time) * 1000)
         
-        logger.info(f"搜索完成，找到 {len(results)} 个结果，耗时 {search_time_ms}ms")
+        logger.info(f"{req.mode.value} 搜索完成，找到 {len(results)} 个结果，耗时 {search_time_ms}ms")
         
         return SearchResponse(
             query=req.query,
+            mode=req.mode.value,
             total=len(results),
             results=results,
             search_time_ms=search_time_ms,
         )
         
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"搜索失败: {e}")
+        logger.error(f"搜索失败: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"搜索失败: {str(e)}"
@@ -183,54 +410,59 @@ async def search_by_share_token(
     await db.commit()
     
     try:
-        # 1. 生成查询向量
-        logger.info(f"分享链接 {share_token} 搜索: {req.query}")
-        query_embedding = await embedding_service.encode_single(req.query)
+        logger.info(f"分享链接 {share_token} {req.mode.value} 搜索: {req.query}")
         
-        # 2. 构建查询条件（限定到分享的知识库）
-        query_stmt = select(
-            DocumentChunk,
-            (1 - DocumentChunk.content_embedding.cosine_distance(query_embedding)).label('similarity')
-        ).where(
-            DocumentChunk.collection_id == share.collection_id,
-            (1 - DocumentChunk.content_embedding.cosine_distance(query_embedding)) >= req.threshold
-        )
+        # 根据搜索模式选择搜索方法（限定到分享的知识库）
+        collection_ids = [share.collection_id]
         
-        # 3. 按相似度排序并限制结果数量
-        query_stmt = query_stmt.order_by(
-            DocumentChunk.content_embedding.cosine_distance(query_embedding)
-        ).limit(req.top_k)
+        if req.mode == SearchMode.VECTOR:
+            rows = await vector_search(
+                db, req.query, None, collection_ids, req.top_k, req.threshold
+            )
+        elif req.mode == SearchMode.FULLTEXT:
+            rows = await fulltext_search(
+                db, req.query, None, collection_ids, req.top_k
+            )
+        elif req.mode == SearchMode.HYBRID:
+            rows = await hybrid_search(
+                db, req.query, None, collection_ids,
+                req.top_k, req.threshold, req.vector_weight, req.fulltext_weight
+            )
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"不支持的搜索模式: {req.mode}"
+            )
         
-        # 4. 执行查询
-        result = await db.execute(query_stmt)
-        rows = result.all()
-        
-        # 5. 构建响应
+        # 构建响应
         results = []
-        for chunk, similarity in rows:
+        for chunk, score in rows:
             results.append(SearchResultItem(
                 chunk_id=chunk.id,
                 document_id=chunk.document_id,
                 collection_id=chunk.collection_id,
                 content=chunk.content,
-                similarity=float(similarity),
+                similarity=float(score),
                 metadata=chunk.meta or {},
                 chunk_index=chunk.chunk_index
             ))
         
         search_time_ms = int((time.time() - start_time) * 1000)
         
-        logger.info(f"分享链接搜索完成，找到 {len(results)} 个结果，耗时 {search_time_ms}ms")
+        logger.info(f"分享链接 {req.mode.value} 搜索完成，找到 {len(results)} 个结果，耗时 {search_time_ms}ms")
         
         return SearchResponse(
             query=req.query,
+            mode=req.mode.value,
             total=len(results),
             results=results,
             search_time_ms=search_time_ms,
         )
         
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"分享链接搜索失败: {e}")
+        logger.error(f"分享链接搜索失败: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"搜索失败: {str(e)}"
