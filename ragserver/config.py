@@ -180,7 +180,7 @@ class Settings(BaseSettings):
         default="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
         description="日志格式"
     )
-    log_file_enabled: bool = Field(default=True, description="是否启用日志文件")
+    log_file_enabled: bool = Field(default=False, description="是否启用日志文件")
     log_file_path: str = Field(default="logs/app.log", description="日志文件路径")
     log_file_max_size: int = Field(default=10 * 1024 * 1024, description="日志文件最大大小（字节）")
     log_file_backup_count: int = Field(default=10, description="日志文件备份数量")

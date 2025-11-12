@@ -126,22 +126,3 @@
 
 ##### 2.3.5 知识库分享链接
 - `POST /api/v1/collections/{collection_id}/share` - 分享知识库检索链接，仅支持单知识库
-Example:
-```
-POST /api/v1/collections/{collection_id}/share
-Authorization: Bearer <jwt_token>
-
-Response:
-{
-  "share_token": "kb_share_abc123xyz",
-  "share_url": "https://your-domain.com/share/kb_share_abc123xyz",
-  "expires_at": "2024-12-31T23:59:59Z"
-}
-
-# 通过分享链接搜索（无需认证）
-POST /api/v1/share/{share_token}/search
-{
-  "query": "搜索内容",
-  "top_k": 5
-}
-```

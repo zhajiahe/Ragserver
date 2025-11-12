@@ -51,6 +51,7 @@ dependencies = [
     "scikit-learn>=1.7.2",
     "img2pdf>=0.6.1",
     "pymupdf>=1.26.5",
+    "fastapi-radar>=0.3.4",
 ]
 
 [project.packages]
