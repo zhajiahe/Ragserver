@@ -49,7 +49,7 @@ async def verify_document_access(db: AsyncSession, document_id: UUID, user_id: U
 
 @router.post(
     "/process",
-    status_code=status.HTTP_202_ACCEPTED,
+    status_code=status.HTTP_200_OK,
     summary="处理文档（批量）"
 )
 async def process_documents(
@@ -61,10 +61,10 @@ async def process_documents(
     批量处理文档（解析、分块、向量化）
     
     - 支持批量提交多个文档
-    - 异步处理，返回任务ID
+    - 同步处理，直接返回结果
     - 可通过状态接口查询进度
     """
-    from ragserver.tasks.document_processing import process_document_task
+    from ragserver.app.services.document_pipeline import process_document
     
     if not request.document_ids:
         raise HTTPException(
@@ -72,39 +72,46 @@ async def process_documents(
             detail="文档ID列表不能为空"
         )
     
-    # 验证所有文档的权限并触发异步任务
+    # 验证所有文档的权限并处理
     processed_ids = []
-    task_ids = []
+    results = []
+    errors = []
     
     for doc_id in request.document_ids:
-        document = await verify_document_access(db, doc_id, current_user.id)
-        
-        if document.status == "completed":
-            # 已经处理完成的文档跳过
-            continue
-        
-        # 触发异步任务
-        task = await process_document_task.kiq(document_id=str(doc_id))
-        task_ids.append(str(task.task_id))
-        
-        # 更新状态为 pending（等待处理）
-        document.status = "pending"
-        document.progress = 0
-        document.updated_at = get_current_time()
-        processed_ids.append(doc_id)
-    
-    await db.commit()
+        try:
+            document = await verify_document_access(db, doc_id, current_user.id)
+            
+            if document.status == "completed":
+                # 已经处理完成的文档跳过
+                results.append({
+                    "document_id": str(doc_id),
+                    "status": "skipped",
+                    "message": "文档已处理完成"
+                })
+                continue
+            
+            # 直接处理文档
+            result = await process_document(db, doc_id)
+            results.append(result)
+            processed_ids.append(doc_id)
+            
+        except Exception as e:
+            errors.append({
+                "document_id": str(doc_id),
+                "error": str(e)
+            })
     
     return {
-        "message": f"已提交 {len(processed_ids)} 个文档进行处理",
+        "message": f"已处理 {len(processed_ids)} 个文档",
         "document_ids": processed_ids,
-        "task_ids": task_ids,
+        "results": results,
+        "errors": errors if errors else None,
     }
 
 
 @router.post(
     "/reprocess",
-    status_code=status.HTTP_202_ACCEPTED,
+    status_code=status.HTTP_200_OK,
     summary="重新处理文档"
 )
 async def reprocess_documents(
@@ -118,7 +125,7 @@ async def reprocess_documents(
     - 会删除现有的分块并重新生成
     - 适用于修改了配置后需要重新处理的场景
     """
-    from ragserver.tasks.document_processing import reprocess_document_task
+    from ragserver.app.services.document_pipeline import reprocess_document
     
     if not request.document_ids:
         raise HTTPException(
@@ -126,30 +133,30 @@ async def reprocess_documents(
             detail="文档ID列表不能为空"
         )
     
-    # 验证所有文档的权限并触发异步任务
+    # 验证所有文档的权限并处理
     reprocessed_ids = []
-    task_ids = []
+    results = []
+    errors = []
     
     for doc_id in request.document_ids:
-        document = await verify_document_access(db, doc_id, current_user.id)
-        
-        # 触发异步重处理任务
-        task = await reprocess_document_task.kiq(document_id=str(doc_id))
-        task_ids.append(str(task.task_id))
-        
-        # 重置状态
-        document.status = "pending"
-        document.progress = 0
-        document.chunk_count = 0
-        document.error_message = None
-        document.updated_at = get_current_time()
-        reprocessed_ids.append(doc_id)
-    
-    await db.commit()
+        try:
+            document = await verify_document_access(db, doc_id, current_user.id)
+            
+            # 直接重新处理文档
+            result = await reprocess_document(db, doc_id)
+            results.append(result)
+            reprocessed_ids.append(doc_id)
+            
+        except Exception as e:
+            errors.append({
+                "document_id": str(doc_id),
+                "error": str(e)
+            })
     
     return {
-        "message": f"已提交 {len(reprocessed_ids)} 个文档进行重新处理",
+        "message": f"已重新处理 {len(reprocessed_ids)} 个文档",
         "document_ids": reprocessed_ids,
-        "task_ids": task_ids,
+        "results": results,
+        "errors": errors if errors else None,
     }
 

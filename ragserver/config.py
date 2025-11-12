@@ -62,10 +62,6 @@ class Settings(BaseSettings):
     redis_db: int = Field(default=0, description="Redis 数据库编号")
     redis_url: Optional[str] = Field(default=None, description="Redis 连接URL")
     
-    # Taskiq 任务队列配置
-    taskiq_broker_url: Optional[str] = Field(default=None, description="Taskiq Broker URL")
-    taskiq_result_backend_url: Optional[str] = Field(default=None, description="Taskiq Result Backend URL")
-    
     @property
     def get_redis_url(self) -> str:
         """获取 Redis 连接URL"""
@@ -74,24 +70,6 @@ class Settings(BaseSettings):
         if self.redis_password:
             return f"redis://:{self.redis_password}@{self.redis_host}:{self.redis_port}/{self.redis_db}"
         return f"redis://{self.redis_host}:{self.redis_port}/{self.redis_db}"
-    
-    @property
-    def get_taskiq_broker_url(self) -> str:
-        """获取 Taskiq Broker URL"""
-        if self.taskiq_broker_url:
-            return self.taskiq_broker_url
-        if self.redis_password:
-            return f"redis://:{self.redis_password}@{self.redis_host}:{self.redis_port}/1"
-        return f"redis://{self.redis_host}:{self.redis_port}/1"
-    
-    @property
-    def get_taskiq_result_backend_url(self) -> str:
-        """获取 Taskiq Result Backend URL"""
-        if self.taskiq_result_backend_url:
-            return self.taskiq_result_backend_url
-        if self.redis_password:
-            return f"redis://:{self.redis_password}@{self.redis_host}:{self.redis_port}/2"
-        return f"redis://{self.redis_host}:{self.redis_port}/2"
     
     # ==================== MinIO 对象存储配置 ====================
     minio_public_host: str = Field(default="http://116.62.153.171", description="MinIO 公共主机")
@@ -190,11 +168,6 @@ class Settings(BaseSettings):
     # 混合搜索权重
     hybrid_vector_weight: float = Field(default=0.7, description="混合搜索向量权重")
     hybrid_fulltext_weight: float = Field(default=0.3, description="混合搜索全文权重")
-    
-    # ==================== 任务队列配置 ====================
-    taskiq_workers: int = Field(default=4, description="Taskiq Worker 数量")
-    taskiq_max_retries: int = Field(default=3, description="任务最大重试次数")
-    taskiq_retry_delay: int = Field(default=60, description="任务重试延迟（秒）")
     
     # ==================== 日志配置 ====================
     log_format: str = Field(

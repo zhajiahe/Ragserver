@@ -5,7 +5,7 @@
 ## 项目概述
 
 **项目名称**: AI知识库管理平台后端系统  
-**技术栈**: FastAPI + PostgreSQL + pgvector + Redis + MinIO + Taskiq  
+**技术栈**: FastAPI + PostgreSQL + pgvector + Redis + MinIO  
 **主要功能**: 文档智能处理、向量检索、知识库管理、API服务
 
 ## 核心原则
@@ -34,6 +34,7 @@ ragserver/
 │   │   ├── documents.py # 文档管理接口
 │   │   └── search.py   # 搜索接口
 │   ├── services/
+│   │   ├── document_pipeline.py # 文档处理流水线
 │   │   ├── embedding.py    # Embedding服务
 │   │   ├── parser.py       # 文档解析服务
 │   │   ├── chunking.py     # 分块服务
@@ -43,7 +44,6 @@ ragserver/
 │       └── redis_client.py # Redis工具
 ├── config.py               # 配置管理
 ├── database.py             # 数据库连接
-├── taskiq_worker.py        # Taskiq worker，具体任务代码可以在services里实现
 └── main.py                 # FastAPI应用入口
 
 ```
@@ -143,23 +143,22 @@ db_url = settings.async_database_url
 EMBEDDING_MODEL = "BAAI/bge-m3"  # 不要这样做
 ```
 
-### 5. 异步任务
+### 5. 文档处理流水线
 
 ```python
-# ✅ 正确：使用 Taskiq
-from ragserver.tasks import broker
+# ✅ 正确：使用简单的流水线处理
+from ragserver.app.services.document_pipeline import process_document
 
-@broker.task
-async def process_document(document_id: UUID):
-    """异步处理文档"""
+async def handle_document_upload(document_id: UUID, db: AsyncSession):
+    """处理上传的文档"""
+    # 直接调用处理流水线
+    result = await process_document(db, document_id)
+    # 流水线会自动完成：
     # 1. 解析文档
     # 2. 分块
     # 3. 生成向量
     # 4. 存储到数据库
-    pass
-
-# 调用任务
-await process_document.kiq(document_id)
+    return result
 ```
 
 ### 6. Embedding 生成
