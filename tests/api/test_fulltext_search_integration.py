@@ -1,27 +1,23 @@
-"""
-全文搜索和混合搜索 API 集成测试
-"""
+"""全文搜索和混合搜索 API 集成测试"""
+
 import pytest
 from httpx import AsyncClient
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from datetime import datetime, timedelta
-from uuid import uuid4
 
-from ragserver.main import app
 from ragserver.app.dependencies import get_db
-from ragserver.app.models import User, Collection, Document, DocumentChunk, CollectionShare
 from ragserver.app.dependencies.security import get_password_hash
-from ragserver.app.utils.date_util import get_current_time
+from ragserver.app.models import Collection, CollectionShare, Document, DocumentChunk, User
 from ragserver.app.utils.embedding_service import embedding_service
+from ragserver.main import app
 
 
 @pytest.fixture
 async def setup_db(db_session: AsyncSession):
     """设置数据库依赖注入"""
+
     async def override_get_db():
         yield db_session
-    
+
     app.dependency_overrides[get_db] = override_get_db
     yield
     app.dependency_overrides.clear()
@@ -81,10 +77,7 @@ async def test_document(db_session: AsyncSession, test_collection: Collection, t
 
 @pytest.fixture
 async def test_chunks_with_embeddings(
-    db_session: AsyncSession,
-    test_document: Document,
-    test_collection: Collection,
-    test_user: User
+    db_session: AsyncSession, test_document: Document, test_collection: Collection, test_user: User
 ):
     """创建包含真实向量的测试分块"""
     # 准备测试文本 - 包含明确的关键词
@@ -95,10 +88,10 @@ async def test_chunks_with_embeddings(
         "机器学习是人工智能的一个分支，它使计算机能够从数据中学习。深度学习是机器学习的一个子领域，使用神经网络处理复杂任务。",
         "Docker是一个容器化平台，可以将应用程序及其依赖项打包在一起。Kubernetes是一个容器编排系统，用于管理Docker容器。",
     ]
-    
+
     # 生成向量
     embeddings = await embedding_service.encode(test_texts)
-    
+
     # 创建分块
     chunks = []
     for i, (text, embedding) in enumerate(zip(test_texts, embeddings)):
@@ -111,17 +104,17 @@ async def test_chunks_with_embeddings(
             chunk_index=i,
             content_embedding=embedding,
             embedding_model="BAAI/bge-m3",
-            meta={"source": "test"}
+            meta={"source": "test"},
         )
         chunks.append(chunk)
         db_session.add(chunk)
-    
+
     await db_session.commit()
-    
+
     # 刷新所有分块
     for chunk in chunks:
         await db_session.refresh(chunk)
-    
+
     return chunks
 
 
@@ -147,7 +140,7 @@ class TestFulltextSearch:
         async_client: AsyncClient,
         auth_headers: dict,
         test_collection: Collection,
-        test_chunks_with_embeddings: list
+        test_chunks_with_embeddings: list,
     ):
         """测试全文搜索 - 关键词匹配"""
         payload = {
@@ -155,20 +148,16 @@ class TestFulltextSearch:
             "mode": "fulltext",
             "top_k": 5,
         }
-        
-        res = await async_client.post(
-            "/api/v1/search",
-            json=payload,
-            headers=auth_headers
-        )
-        
+
+        res = await async_client.post("/api/v1/search", json=payload, headers=auth_headers)
+
         assert res.status_code == 200
         data = res.json()
         assert data["query"] == "Python"
         assert data["mode"] == "fulltext"
         assert "results" in data
         assert "search_time_ms" in data
-        
+
         # 如果找到结果，验证结果中包含关键词
         if data["total"] > 0:
             # 至少有一个结果应该包含 "Python"
@@ -181,7 +170,7 @@ class TestFulltextSearch:
         async_client: AsyncClient,
         auth_headers: dict,
         test_collection: Collection,
-        test_chunks_with_embeddings: list
+        test_chunks_with_embeddings: list,
     ):
         """测试全文搜索 - JavaScript关键词"""
         payload = {
@@ -189,17 +178,13 @@ class TestFulltextSearch:
             "mode": "fulltext",
             "top_k": 3,
         }
-        
-        res = await async_client.post(
-            "/api/v1/search",
-            json=payload,
-            headers=auth_headers
-        )
-        
+
+        res = await async_client.post("/api/v1/search", json=payload, headers=auth_headers)
+
         assert res.status_code == 200
         data = res.json()
         assert data["mode"] == "fulltext"
-        
+
         # 如果找到结果，验证包含 JavaScript
         if data["total"] > 0:
             contents = [r["content"] for r in data["results"]]
@@ -207,10 +192,7 @@ class TestFulltextSearch:
 
     @pytest.mark.asyncio
     async def test_fulltext_search_database(
-        self,
-        async_client: AsyncClient,
-        auth_headers: dict,
-        test_chunks_with_embeddings: list
+        self, async_client: AsyncClient, auth_headers: dict, test_chunks_with_embeddings: list
     ):
         """测试全文搜索 - 数据库关键词"""
         payload = {
@@ -218,13 +200,9 @@ class TestFulltextSearch:
             "mode": "fulltext",
             "top_k": 5,
         }
-        
-        res = await async_client.post(
-            "/api/v1/search",
-            json=payload,
-            headers=auth_headers
-        )
-        
+
+        res = await async_client.post("/api/v1/search", json=payload, headers=auth_headers)
+
         assert res.status_code == 200
         data = res.json()
         assert data["mode"] == "fulltext"
@@ -239,7 +217,7 @@ class TestHybridSearch:
         async_client: AsyncClient,
         auth_headers: dict,
         test_collection: Collection,
-        test_chunks_with_embeddings: list
+        test_chunks_with_embeddings: list,
     ):
         """测试混合搜索 - 默认权重"""
         payload = {
@@ -248,13 +226,9 @@ class TestHybridSearch:
             "top_k": 5,
             "threshold": 0.3,
         }
-        
-        res = await async_client.post(
-            "/api/v1/search",
-            json=payload,
-            headers=auth_headers
-        )
-        
+
+        res = await async_client.post("/api/v1/search", json=payload, headers=auth_headers)
+
         assert res.status_code == 200
         data = res.json()
         assert data["query"] == "Python编程语言"
@@ -268,7 +242,7 @@ class TestHybridSearch:
         async_client: AsyncClient,
         auth_headers: dict,
         test_collection: Collection,
-        test_chunks_with_embeddings: list
+        test_chunks_with_embeddings: list,
     ):
         """测试混合搜索 - 自定义权重"""
         payload = {
@@ -279,13 +253,9 @@ class TestHybridSearch:
             "vector_weight": 0.5,
             "fulltext_weight": 0.5,
         }
-        
-        res = await async_client.post(
-            "/api/v1/search",
-            json=payload,
-            headers=auth_headers
-        )
-        
+
+        res = await async_client.post("/api/v1/search", json=payload, headers=auth_headers)
+
         assert res.status_code == 200
         data = res.json()
         assert data["mode"] == "hybrid"
@@ -293,10 +263,7 @@ class TestHybridSearch:
 
     @pytest.mark.asyncio
     async def test_hybrid_search_vector_heavy(
-        self,
-        async_client: AsyncClient,
-        auth_headers: dict,
-        test_chunks_with_embeddings: list
+        self, async_client: AsyncClient, auth_headers: dict, test_chunks_with_embeddings: list
     ):
         """测试混合搜索 - 向量权重更高"""
         payload = {
@@ -307,23 +274,16 @@ class TestHybridSearch:
             "vector_weight": 0.9,
             "fulltext_weight": 0.1,
         }
-        
-        res = await async_client.post(
-            "/api/v1/search",
-            json=payload,
-            headers=auth_headers
-        )
-        
+
+        res = await async_client.post("/api/v1/search", json=payload, headers=auth_headers)
+
         assert res.status_code == 200
         data = res.json()
         assert data["mode"] == "hybrid"
 
     @pytest.mark.asyncio
     async def test_hybrid_search_fulltext_heavy(
-        self,
-        async_client: AsyncClient,
-        auth_headers: dict,
-        test_chunks_with_embeddings: list
+        self, async_client: AsyncClient, auth_headers: dict, test_chunks_with_embeddings: list
     ):
         """测试混合搜索 - 全文权重更高"""
         payload = {
@@ -334,13 +294,9 @@ class TestHybridSearch:
             "vector_weight": 0.1,
             "fulltext_weight": 0.9,
         }
-        
-        res = await async_client.post(
-            "/api/v1/search",
-            json=payload,
-            headers=auth_headers
-        )
-        
+
+        res = await async_client.post("/api/v1/search", json=payload, headers=auth_headers)
+
         assert res.status_code == 200
         data = res.json()
         assert data["mode"] == "hybrid"
@@ -351,49 +307,44 @@ class TestSearchModeComparison:
 
     @pytest.mark.asyncio
     async def test_compare_all_search_modes(
-        self,
-        async_client: AsyncClient,
-        auth_headers: dict,
-        test_chunks_with_embeddings: list
+        self, async_client: AsyncClient, auth_headers: dict, test_chunks_with_embeddings: list
     ):
         """对比三种搜索模式的结果"""
         query = "Python编程"
-        
+
         # 向量搜索
         vector_res = await async_client.post(
             "/api/v1/search",
             json={"query": query, "mode": "vector", "top_k": 5, "threshold": 0.3},
-            headers=auth_headers
+            headers=auth_headers,
         )
-        
+
         # 全文搜索
         fulltext_res = await async_client.post(
-            "/api/v1/search",
-            json={"query": query, "mode": "fulltext", "top_k": 5},
-            headers=auth_headers
+            "/api/v1/search", json={"query": query, "mode": "fulltext", "top_k": 5}, headers=auth_headers
         )
-        
+
         # 混合搜索
         hybrid_res = await async_client.post(
             "/api/v1/search",
             json={"query": query, "mode": "hybrid", "top_k": 5, "threshold": 0.3},
-            headers=auth_headers
+            headers=auth_headers,
         )
-        
+
         # 验证所有请求都成功
         assert vector_res.status_code == 200
         assert fulltext_res.status_code == 200
         assert hybrid_res.status_code == 200
-        
+
         vector_data = vector_res.json()
         fulltext_data = fulltext_res.json()
         hybrid_data = hybrid_res.json()
-        
+
         # 验证模式标识
         assert vector_data["mode"] == "vector"
         assert fulltext_data["mode"] == "fulltext"
         assert hybrid_data["mode"] == "hybrid"
-        
+
         # 打印结果数量对比
         print(f"\n搜索模式对比 - 查询: {query}")
         print(f"  向量搜索: {vector_data['total']} 个结果")
@@ -411,7 +362,7 @@ class TestShareSearchWithModes:
         db_session: AsyncSession,
         test_collection: Collection,
         test_user: User,
-        test_chunks_with_embeddings: list
+        test_chunks_with_embeddings: list,
     ):
         """测试分享链接的向量搜索"""
         # 创建分享
@@ -425,19 +376,16 @@ class TestShareSearchWithModes:
         )
         db_session.add(share)
         await db_session.commit()
-        
+
         payload = {
             "query": "Python",
             "mode": "vector",
             "top_k": 3,
             "threshold": 0.3,
         }
-        
-        res = await async_client.post(
-            f"/api/v1/share/{share.share_token}/search",
-            json=payload
-        )
-        
+
+        res = await async_client.post(f"/api/v1/share/{share.share_token}/search", json=payload)
+
         assert res.status_code == 200
         data = res.json()
         assert data["mode"] == "vector"
@@ -449,7 +397,7 @@ class TestShareSearchWithModes:
         db_session: AsyncSession,
         test_collection: Collection,
         test_user: User,
-        test_chunks_with_embeddings: list
+        test_chunks_with_embeddings: list,
     ):
         """测试分享链接的全文搜索"""
         # 创建分享
@@ -463,18 +411,15 @@ class TestShareSearchWithModes:
         )
         db_session.add(share)
         await db_session.commit()
-        
+
         payload = {
             "query": "JavaScript",
             "mode": "fulltext",
             "top_k": 3,
         }
-        
-        res = await async_client.post(
-            f"/api/v1/share/{share.share_token}/search",
-            json=payload
-        )
-        
+
+        res = await async_client.post(f"/api/v1/share/{share.share_token}/search", json=payload)
+
         assert res.status_code == 200
         data = res.json()
         assert data["mode"] == "fulltext"
@@ -486,7 +431,7 @@ class TestShareSearchWithModes:
         db_session: AsyncSession,
         test_collection: Collection,
         test_user: User,
-        test_chunks_with_embeddings: list
+        test_chunks_with_embeddings: list,
     ):
         """测试分享链接的混合搜索"""
         # 创建分享
@@ -500,19 +445,16 @@ class TestShareSearchWithModes:
         )
         db_session.add(share)
         await db_session.commit()
-        
+
         payload = {
             "query": "数据库系统",
             "mode": "hybrid",
             "top_k": 3,
             "threshold": 0.3,
         }
-        
-        res = await async_client.post(
-            f"/api/v1/share/{share.share_token}/search",
-            json=payload
-        )
-        
+
+        res = await async_client.post(f"/api/v1/share/{share.share_token}/search", json=payload)
+
         assert res.status_code == 200
         data = res.json()
         assert data["mode"] == "hybrid"
@@ -533,22 +475,15 @@ class TestSearchEdgeCases:
             "mode": "invalid_mode",
             "top_k": 5,
         }
-        
-        res = await async_client.post(
-            "/api/v1/search",
-            json=payload,
-            headers=auth_headers
-        )
-        
+
+        res = await async_client.post("/api/v1/search", json=payload, headers=auth_headers)
+
         # 应该返回验证错误
         assert res.status_code == 422
 
     @pytest.mark.asyncio
     async def test_fulltext_search_no_results(
-        self,
-        async_client: AsyncClient,
-        auth_headers: dict,
-        test_chunks_with_embeddings: list
+        self, async_client: AsyncClient, auth_headers: dict, test_chunks_with_embeddings: list
     ):
         """测试全文搜索无结果的情况"""
         payload = {
@@ -556,16 +491,11 @@ class TestSearchEdgeCases:
             "mode": "fulltext",
             "top_k": 5,
         }
-        
-        res = await async_client.post(
-            "/api/v1/search",
-            json=payload,
-            headers=auth_headers
-        )
-        
+
+        res = await async_client.post("/api/v1/search", json=payload, headers=auth_headers)
+
         assert res.status_code == 200
         data = res.json()
         assert data["mode"] == "fulltext"
         # 可能找不到结果
         assert data["total"] >= 0
-

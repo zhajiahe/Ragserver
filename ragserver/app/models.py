@@ -1,32 +1,44 @@
-"""
-AI知识库管理平台数据模型
+"""AI知识库管理平台数据模型
 
 SQLAlchemy模型，包含用户管理、知识库管理、文档处理等核心实体。
 """
 
-from datetime import datetime
+import uuid
+
+from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
-    Column, String, Text, Integer, Boolean, DateTime, BigInteger, text, event,
-    Index, ForeignKey, UUID as PGUUID
+    UUID as PGUUID,
+)
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    Column,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
-from pgvector.sqlalchemy import Vector
 from sqlalchemy.orm import declarative_base, relationship
-import uuid
-from ragserver.config import settings
+
 from ragserver.app.utils.date_util import get_current_time
+from ragserver.config import settings
 
 Base = declarative_base()
 
 
 class TimeMixin:
     """时间戳混入类，为所有模型提供创建和更新时间"""
+
     created_at = Column(DateTime(timezone=True), default=get_current_time, nullable=False)
     updated_at = Column(DateTime(timezone=True), default=get_current_time, onupdate=get_current_time, nullable=False)
 
 
 class User(Base, TimeMixin):
     """用户模型"""
+
     __tablename__ = "users"
 
     id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -62,6 +74,7 @@ class User(Base, TimeMixin):
 
 class Collection(Base, TimeMixin):
     """知识库模型"""
+
     __tablename__ = "collections"
 
     id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -93,8 +106,8 @@ class Collection(Base, TimeMixin):
     shares = relationship("CollectionShare", back_populates="collection", passive_deletes=True)
 
     __table_args__ = (
-        Index('idx_kb_user', 'user_id'),
-        Index('idx_kb_status', 'status'),
+        Index("idx_kb_user", "user_id"),
+        Index("idx_kb_status", "status"),
     )
 
     def __repr__(self):
@@ -103,10 +116,11 @@ class Collection(Base, TimeMixin):
 
 class Document(Base, TimeMixin):
     """文档模型"""
+
     __tablename__ = "documents"
 
     id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    collection_id = Column(PGUUID(as_uuid=True), ForeignKey("collections.id", ondelete='CASCADE'), nullable=False)
+    collection_id = Column(PGUUID(as_uuid=True), ForeignKey("collections.id", ondelete="CASCADE"), nullable=False)
     uploaded_by = Column(PGUUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
 
     # 文件信息
@@ -117,8 +131,7 @@ class Document(Base, TimeMixin):
     mime_type = Column(String(100), nullable=False)
     file_hash = Column(String(64), nullable=False)  # SHA256
 
-
-    content_text = Column(Text) # Markdown格式文本
+    content_text = Column(Text)  # Markdown格式文本
 
     # 处理状态
     status = Column(String(20), default="pending", nullable=False)  # pending/processing/completed/failed
@@ -141,10 +154,10 @@ class Document(Base, TimeMixin):
     chunks = relationship("DocumentChunk", back_populates="document", passive_deletes=True)
 
     __table_args__ = (
-        Index('idx_doc_kb', 'collection_id'),
-        Index('idx_doc_uploader', 'uploaded_by'),
-        Index('idx_doc_status', 'status'),
-        Index('idx_doc_hash', 'file_hash'),
+        Index("idx_doc_kb", "collection_id"),
+        Index("idx_doc_uploader", "uploaded_by"),
+        Index("idx_doc_status", "status"),
+        Index("idx_doc_hash", "file_hash"),
     )
 
     def __repr__(self):
@@ -153,18 +166,19 @@ class Document(Base, TimeMixin):
 
 class DocumentChunk(Base, TimeMixin):
     """文档分块模型"""
+
     __tablename__ = "document_chunks"
 
     id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    document_id = Column(PGUUID(as_uuid=True), ForeignKey("documents.id", ondelete='CASCADE'), nullable=False)
-    collection_id = Column(PGUUID(as_uuid=True), ForeignKey("collections.id", ondelete='CASCADE'), nullable=False)
+    document_id = Column(PGUUID(as_uuid=True), ForeignKey("documents.id", ondelete="CASCADE"), nullable=False)
+    collection_id = Column(PGUUID(as_uuid=True), ForeignKey("collections.id", ondelete="CASCADE"), nullable=False)
     user_id = Column(PGUUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
 
     # 分块内容
     content = Column(Text, nullable=False)
     content_hash = Column(String(64), nullable=False)  # SHA256 for deduplication
     chunk_index = Column(Integer, nullable=False)  # 0-based index in document
-    summary = Column(Text) # 块的摘要
+    summary = Column(Text)  # 块的摘要
     # 向量数据（需 PostgreSQL + pgvector 扩展）
     content_embedding = Column(Vector(settings.embedding_dimension))  # bge-m3: 默认 1024 维（可配置）
     summary_embedding = Column(Vector(settings.embedding_dimension))
@@ -183,18 +197,18 @@ class DocumentChunk(Base, TimeMixin):
     user = relationship("User", back_populates="document_chunks")
 
     __table_args__ = (
-        Index('idx_chunk_doc', 'document_id'),
-        Index('idx_chunk_kb', 'collection_id'),
-        Index('idx_chunk_user', 'user_id'),
-        Index('idx_chunk_hash', 'content_hash'),
+        Index("idx_chunk_doc", "document_id"),
+        Index("idx_chunk_kb", "collection_id"),
+        Index("idx_chunk_user", "user_id"),
+        Index("idx_chunk_hash", "content_hash"),
         Index(
-            'idx_chunk_content_embedding_hnsw',
+            "idx_chunk_content_embedding_hnsw",
             content_embedding,
-            postgresql_using='hnsw',
-            postgresql_ops={'content_embedding': 'vector_cosine_ops'},
-            postgresql_with={'m': settings.hnsw_m, 'ef_construction': settings.hnsw_ef_construction},
+            postgresql_using="hnsw",
+            postgresql_ops={"content_embedding": "vector_cosine_ops"},
+            postgresql_with={"m": settings.hnsw_m, "ef_construction": settings.hnsw_ef_construction},
         ),
-        Index('idx_chunk_kb_user', 'collection_id', 'user_id'),
+        Index("idx_chunk_kb_user", "collection_id", "user_id"),
     )
 
     def __repr__(self):
@@ -203,10 +217,11 @@ class DocumentChunk(Base, TimeMixin):
 
 class CollectionShare(Base, TimeMixin):
     """知识库分享模型"""
+
     __tablename__ = "collection_shares"
 
     id = Column(PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    collection_id = Column(PGUUID(as_uuid=True), ForeignKey("collections.id", ondelete='CASCADE'), nullable=False)
+    collection_id = Column(PGUUID(as_uuid=True), ForeignKey("collections.id", ondelete="CASCADE"), nullable=False)
     created_by = Column(PGUUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
 
     # 分享信息
@@ -230,10 +245,10 @@ class CollectionShare(Base, TimeMixin):
     creator = relationship("User", back_populates="collection_shares")
 
     __table_args__ = (
-        Index('idx_share_token', 'share_token'),
-        Index('idx_share_kb', 'collection_id'),
-        Index('idx_share_creator', 'created_by'),
-        Index('idx_share_active', 'is_active'),
+        Index("idx_share_token", "share_token"),
+        Index("idx_share_kb", "collection_id"),
+        Index("idx_share_creator", "created_by"),
+        Index("idx_share_active", "is_active"),
     )
 
     def __repr__(self):

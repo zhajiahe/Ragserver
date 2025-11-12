@@ -72,6 +72,7 @@ dev = [
     "pytest-socket>=0.7.0",
     "pytest-timeout>=2.4.0",
     "pytest-asyncio>=1.0.0",
+    "mypy>=1.18.1",
 ]
 
 [tool.pytest.ini_options]
@@ -90,64 +91,22 @@ asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 
 [tool.ruff]
-line-length = 88
-target-version = "py311"
-
-[tool.ruff.lint]
-select = [
-  "ALL",
+line-length = 120
+lint.select = [
+    "E",    # pycodestyle
+    "F",    # pyflakes
+    "I",    # isort
+    "D",    # pydocstyle
+    "UP",
 ]
-ignore = [
-  "COM812",
-  "ANN001",
-  "ANN201",
-  "ARG001",
-  "B008",
-  "B904",
-  "BLE001",
-  "C901",
-  "D100",
-  "D101",
-  "D104",
-  "D106",
-  "D205",
-  "E501",
-  "EM101",
-  "EM102",
-  "ERA001",
-  "FAST002",
-  "G004",
-  "G201",
-  "PLR0912",
-  "PLR0915",
-  "PLW0603",
-  "RET504",
-  "RUF006",
-  "S104",
-  "T201",
-  "TC002",
-  "TID252",
-  "TD003",
-  "FIX002",
-  "TRY003",
-  "TRY004",
-  "TRY201",
-  "TRY300",
-  "TRY301",
-  "TRY401",
-  "UP007",
-  "W291"
-]
-
-
-[tool.ruff.lint.per-file-ignores]
-"tests/**/*.py" = [
-  "S101",    # bare asserts
-  "ARG",     # unused-argument
-  "FBT",     # boolean-tuple-for-parameter
-  "D104",    # missing docstring in package
-  "PLR2004", # magic-values-in-comparison
-  "S311",    # use of non-crypto RNG
+lint.ignore = [
+    "D100",  # Missing docstring in public module
+    "D101",  # Missing docstring in public class
+    "D102",  # Missing docstring in public method
+    "D103",  # Missing docstring in public function
+    "D104",  # Missing docstring in public package
+    "D105",  # Missing docstring in magic method
+    "D415",  # Add closing punctuation
 ]
 
 [tool.ruff.lint.pydocstyle]

@@ -1,9 +1,10 @@
-"""
-日志配置模块
+"""日志配置模块
 使用 loguru 进行日志管理
 """
+
 import sys
 from pathlib import Path
+
 from loguru import logger
 
 from ragserver.config import settings
@@ -11,10 +12,9 @@ from ragserver.config import settings
 
 def setup_logging():
     """配置 loguru 日志系统"""
-    
     # 移除默认的 handler
     logger.remove()
-    
+
     # 添加控制台输出
     logger.add(
         sys.stdout,
@@ -22,13 +22,13 @@ def setup_logging():
         level=settings.log_level,
         colorize=True,
     )
-    
+
     # 如果启用文件日志
     if settings.log_file_enabled:
         # 确保日志目录存在
         log_path = Path(settings.log_file_path)
         log_path.parent.mkdir(parents=True, exist_ok=True)
-        
+
         # 添加文件输出（带轮转）
         logger.add(
             settings.log_file_path,
@@ -39,7 +39,7 @@ def setup_logging():
             compression="zip",  # 压缩旧日志
             encoding="utf-8",
         )
-        
+
         # 添加错误日志单独文件
         error_log_path = log_path.parent / f"{log_path.stem}_error{log_path.suffix}"
         logger.add(
@@ -51,7 +51,7 @@ def setup_logging():
             compression="zip",
             encoding="utf-8",
         )
-    
+
     logger.info("日志系统初始化完成")
     logger.info(f"日志级别: {settings.log_level}")
     logger.info(f"文件日志: {'启用' if settings.log_file_enabled else '禁用'}")
@@ -61,4 +61,3 @@ def setup_logging():
 
 # 导出 logger 供其他模块使用
 __all__ = ["setup_logging", "logger"]
-

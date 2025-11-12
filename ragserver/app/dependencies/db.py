@@ -1,11 +1,12 @@
-"""
-数据库引擎与会话管理（异步）
+"""数据库引擎与会话管理（异步）
 
 提供全局异步引擎与 SessionFactory，供 FastAPI 依赖注入使用。
 """
+
 from __future__ import annotations
 
-from typing import AsyncGenerator
+from collections.abc import AsyncGenerator
+
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -35,9 +36,6 @@ async_session_factory = sessionmaker(
 )
 
 
-
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
     async with async_session_factory() as session:
         yield session
-
-

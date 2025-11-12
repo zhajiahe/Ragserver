@@ -1,25 +1,26 @@
-"""
-搜索 API 集成测试
-"""
+"""搜索 API 集成测试"""
+
+from datetime import timedelta
+
 import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from datetime import datetime, timedelta
 
-from ragserver.main import app
 from ragserver.app.dependencies import get_db
-from ragserver.app.models import User, Collection, CollectionShare
 from ragserver.app.dependencies.security import get_password_hash
+from ragserver.app.models import Collection, CollectionShare, User
 from ragserver.app.utils.date_util import get_current_time
+from ragserver.main import app
 
 
 @pytest.fixture
 async def setup_db(db_session: AsyncSession):
     """设置数据库依赖注入"""
+
     async def override_get_db():
         yield db_session
-    
+
     app.dependency_overrides[get_db] = override_get_db
     yield
     app.dependency_overrides.clear()
@@ -74,25 +75,13 @@ class TestSearchAuthenticated:
 
     @pytest.mark.asyncio
     async def test_search_authenticated(
-        self,
-        async_client: AsyncClient,
-        auth_headers: dict,
-        test_collection: Collection
+        self, async_client: AsyncClient, auth_headers: dict, test_collection: Collection
     ):
         """测试认证用户搜索"""
-        payload = {
-            "query": "测试查询",
-            "top_k": 5,
-            "threshold": 0.7,
-            "collection_ids": [str(test_collection.id)]
-        }
-        
-        res = await async_client.post(
-            "/api/v1/search",
-            json=payload,
-            headers=auth_headers
-        )
-        
+        payload = {"query": "测试查询", "top_k": 5, "threshold": 0.7, "collection_ids": [str(test_collection.id)]}
+
+        res = await async_client.post("/api/v1/search", json=payload, headers=auth_headers)
+
         assert res.status_code == 200
         data = res.json()
         assert data["query"] == "测试查询"
@@ -106,36 +95,22 @@ class TestSearchAuthenticated:
         async_client: AsyncClient,
     ):
         """测试未认证用户无法访问"""
-        payload = {
-            "query": "测试查询",
-            "top_k": 5
-        }
-        
-        res = await async_client.post(
-            "/api/v1/search",
-            json=payload
-        )
-        
+        payload = {"query": "测试查询", "top_k": 5}
+
+        res = await async_client.post("/api/v1/search", json=payload)
+
         assert res.status_code == 401
 
     @pytest.mark.asyncio
-    async def test_search_with_invalid_top_k(
-        self,
-        async_client: AsyncClient,
-        auth_headers: dict
-    ):
+    async def test_search_with_invalid_top_k(self, async_client: AsyncClient, auth_headers: dict):
         """测试无效的 top_k 参数"""
         payload = {
             "query": "测试查询",
             "top_k": 200,  # 超过最大值 100
         }
-        
-        res = await async_client.post(
-            "/api/v1/search",
-            json=payload,
-            headers=auth_headers
-        )
-        
+
+        res = await async_client.post("/api/v1/search", json=payload, headers=auth_headers)
+
         assert res.status_code == 422  # Validation error
 
 
@@ -144,26 +119,20 @@ class TestCollectionShare:
 
     @pytest.mark.asyncio
     async def test_create_share_success(
-        self,
-        async_client: AsyncClient,
-        auth_headers: dict,
-        test_collection: Collection,
-        db_session: AsyncSession
+        self, async_client: AsyncClient, auth_headers: dict, test_collection: Collection, db_session: AsyncSession
     ):
         """测试成功创建分享链接"""
         payload = {
             "name": "公开分享",
             "description": "这是一个公开分享",
             "expires_in_days": 30,
-            "search_config": {"max_top_k": 20}
+            "search_config": {"max_top_k": 20},
         }
-        
+
         res = await async_client.post(
-            f"/api/v1/collections/{test_collection.id}/share",
-            json=payload,
-            headers=auth_headers
+            f"/api/v1/collections/{test_collection.id}/share", json=payload, headers=auth_headers
         )
-        
+
         assert res.status_code == 201
         data = res.json()
         assert data["name"] == "公开分享"
@@ -173,51 +142,37 @@ class TestCollectionShare:
         assert data["share_token"].startswith("kb_share_")
         assert "share_url" in data
         assert data["usage_count"] == 0
-        
+
         # 验证数据库
         result = await db_session.execute(
-            select(CollectionShare).where(
-                CollectionShare.share_token == data["share_token"]
-            )
+            select(CollectionShare).where(CollectionShare.share_token == data["share_token"])
         )
         share = result.scalar_one()
         assert share.collection_id == test_collection.id
         assert share.is_active is True
 
     @pytest.mark.asyncio
-    async def test_create_share_nonexistent_collection(
-        self,
-        async_client: AsyncClient,
-        auth_headers: dict
-    ):
+    async def test_create_share_nonexistent_collection(self, async_client: AsyncClient, auth_headers: dict):
         """测试为不存在的知识库创建分享"""
         import uuid
+
         fake_id = uuid.uuid4()
-        
+
         payload = {
             "name": "测试分享",
         }
-        
-        res = await async_client.post(
-            f"/api/v1/collections/{fake_id}/share",
-            json=payload,
-            headers=auth_headers
-        )
-        
+
+        res = await async_client.post(f"/api/v1/collections/{fake_id}/share", json=payload, headers=auth_headers)
+
         assert res.status_code == 404
 
-    
 
 class TestShareSearch:
     """分享链接搜索测试"""
 
     @pytest.mark.asyncio
     async def test_search_by_share_token_success(
-        self,
-        async_client: AsyncClient,
-        test_collection: Collection,
-        db_session: AsyncSession,
-        test_user: User
+        self, async_client: AsyncClient, test_collection: Collection, db_session: AsyncSession, test_user: User
     ):
         """测试通过分享链接搜索"""
         # 创建分享
@@ -231,22 +186,16 @@ class TestShareSearch:
         )
         db_session.add(share)
         await db_session.commit()
-        
-        payload = {
-            "query": "测试查询",
-            "top_k": 5
-        }
-        
-        res = await async_client.post(
-            f"/api/v1/share/{share.share_token}/search",
-            json=payload
-        )
-        
+
+        payload = {"query": "测试查询", "top_k": 5}
+
+        res = await async_client.post(f"/api/v1/share/{share.share_token}/search", json=payload)
+
         assert res.status_code == 200
         data = res.json()
         assert data["query"] == "测试查询"
         assert data["total"] >= 0
-        
+
         # 验证使用统计已更新
         await db_session.refresh(share)
         assert share.usage_count == 1
@@ -254,11 +203,7 @@ class TestShareSearch:
 
     @pytest.mark.asyncio
     async def test_search_by_inactive_share(
-        self,
-        async_client: AsyncClient,
-        test_collection: Collection,
-        db_session: AsyncSession,
-        test_user: User
+        self, async_client: AsyncClient, test_collection: Collection, db_session: AsyncSession, test_user: User
     ):
         """测试使用已停用的分享链接"""
         # 创建已停用的分享
@@ -271,30 +216,19 @@ class TestShareSearch:
         )
         db_session.add(share)
         await db_session.commit()
-        
-        payload = {
-            "query": "测试查询",
-            "top_k": 5
-        }
-        
-        res = await async_client.post(
-            f"/api/v1/share/{share.share_token}/search",
-            json=payload
-        )
-        
+
+        payload = {"query": "测试查询", "top_k": 5}
+
+        res = await async_client.post(f"/api/v1/share/{share.share_token}/search", json=payload)
+
         assert res.status_code == 403
         assert "已停用" in res.json()["detail"]
 
     @pytest.mark.asyncio
     async def test_search_by_expired_share(
-        self,
-        async_client: AsyncClient,
-        test_collection: Collection,
-        db_session: AsyncSession,
-        test_user: User
+        self, async_client: AsyncClient, test_collection: Collection, db_session: AsyncSession, test_user: User
     ):
         """测试使用已过期的分享链接"""
-        
         # 创建已过期的分享
         share = CollectionShare(
             collection_id=test_collection.id,
@@ -306,45 +240,26 @@ class TestShareSearch:
         )
         db_session.add(share)
         await db_session.commit()
-        
-        payload = {
-            "query": "测试查询",
-            "top_k": 5
-        }
-        
-        res = await async_client.post(
-            f"/api/v1/share/{share.share_token}/search",
-            json=payload
-        )
-        
+
+        payload = {"query": "测试查询", "top_k": 5}
+
+        res = await async_client.post(f"/api/v1/share/{share.share_token}/search", json=payload)
+
         assert res.status_code == 403
         assert "已过期" in res.json()["detail"]
 
     @pytest.mark.asyncio
-    async def test_search_by_nonexistent_share(
-        self,
-        async_client: AsyncClient
-    ):
+    async def test_search_by_nonexistent_share(self, async_client: AsyncClient):
         """测试使用不存在的分享链接"""
-        payload = {
-            "query": "测试查询",
-            "top_k": 5
-        }
-        
-        res = await async_client.post(
-            "/api/v1/share/kb_share_nonexistent/search",
-            json=payload
-        )
-        
+        payload = {"query": "测试查询", "top_k": 5}
+
+        res = await async_client.post("/api/v1/share/kb_share_nonexistent/search", json=payload)
+
         assert res.status_code == 404
 
     @pytest.mark.asyncio
     async def test_search_with_top_k_limit(
-        self,
-        async_client: AsyncClient,
-        test_collection: Collection,
-        db_session: AsyncSession,
-        test_user: User
+        self, async_client: AsyncClient, test_collection: Collection, db_session: AsyncSession, test_user: User
     ):
         """测试 top_k 受分享配置限制"""
         # 创建限制 max_top_k=5 的分享
@@ -358,19 +273,12 @@ class TestShareSearch:
         )
         db_session.add(share)
         await db_session.commit()
-        
+
         # 请求 top_k=10，应该被限制为 5
-        payload = {
-            "query": "测试查询",
-            "top_k": 10
-        }
-        
-        res = await async_client.post(
-            f"/api/v1/share/{share.share_token}/search",
-            json=payload
-        )
-        
+        payload = {"query": "测试查询", "top_k": 10}
+
+        res = await async_client.post(f"/api/v1/share/{share.share_token}/search", json=payload)
+
         assert res.status_code == 200
         # 注意：实际搜索逻辑需要实现后，结果数量才会受到限制
         # 这里只测试接口能正常响应
-

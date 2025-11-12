@@ -1,12 +1,12 @@
 from sqladmin import Admin, ModelView
 
 from ragserver.app.models import (
-    User,
+    APIKey,
+    APIUsageLog,
     Collection,
     Document,
     DocumentChunk,
-    APIKey,
-    APIUsageLog,
+    User,
 )
 
 
@@ -43,5 +43,3 @@ def setup_admin(app, engine) -> Admin:
     admin.add_view(APIKeyAdmin)
     admin.add_view(APIUsageLogAdmin)
     return admin
-
-

@@ -1,25 +1,22 @@
-"""
-用户认证相关 API 路由
-"""
+"""用户认证相关 API 路由"""
+
 from __future__ import annotations
 
 from datetime import timedelta
-from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ragserver.app.dependencies import get_db
 from ragserver.app.dependencies.security import (
-    get_password_hash,
-    verify_password,
     create_access_token,
     get_current_active_user,
+    get_password_hash,
+    verify_password,
 )
 from ragserver.app.models import User
-
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 
@@ -34,16 +31,14 @@ class RegisterRequest(BaseModel):
     username: str = Field(min_length=3, max_length=50)
     email: EmailStr
     password: str = Field(min_length=8, max_length=128)
-    full_name: Optional[str] = Field(default=None, max_length=100)
-    avatar_url: Optional[str] = Field(default=None, max_length=500)
+    full_name: str | None = Field(default=None, max_length=100)
+    avatar_url: str | None = Field(default=None, max_length=500)
 
 
 @router.post("/register", response_model=TokenResponse, status_code=201)
 async def register(req: RegisterRequest, db: AsyncSession = Depends(get_db)):
     # 唯一性检查
-    result = await db.execute(
-        select(User).where((User.username == req.username) | (User.email == req.email))
-    )
+    result = await db.execute(select(User).where((User.username == req.username) | (User.email == req.email)))
     exists = result.scalar_one_or_none()
     if exists:
         raise HTTPException(status_code=400, detail="用户名或邮箱已存在")
@@ -100,5 +95,3 @@ async def change_password(
     current_user.hashed_password = get_password_hash(req.new_password)
     await db.commit()
     return None
-
-

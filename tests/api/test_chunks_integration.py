@@ -1,29 +1,29 @@
-"""
-文档分块查询集成测试
+"""文档分块查询集成测试
 
 测试文档分块的查询、详情、删除等接口
 """
-import pytest
-from httpx import AsyncClient
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+
+from datetime import timedelta
 from uuid import uuid4
 
-from ragserver.app.models import User, Collection, Document, DocumentChunk
+import pytest
+from httpx import AsyncClient
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from ragserver.app.dependencies.security import create_access_token, get_password_hash
-from ragserver.app.utils.date_util import get_current_time
-from datetime import timedelta
+from ragserver.app.models import Collection, Document, DocumentChunk, User
 
 
 @pytest.fixture(scope="function")
 async def setup_db(db_session: AsyncSession):
     """设置数据库依赖注入覆盖"""
-    from ragserver.main import app
     from ragserver.app.dependencies import get_db
-    
+    from ragserver.main import app
+
     async def override_get_db():
         yield db_session
-    
+
     app.dependency_overrides[get_db] = override_get_db
     yield
     app.dependency_overrides.clear()
@@ -89,7 +89,7 @@ async def authenticated_user_with_chunks(async_client: AsyncClient, db_session: 
         )
         chunks.append(chunk)
         db_session.add(chunk)
-    
+
     await db_session.commit()
     for chunk in chunks:
         await db_session.refresh(chunk)
@@ -97,7 +97,7 @@ async def authenticated_user_with_chunks(async_client: AsyncClient, db_session: 
     # 创建认证token
     access_token = create_access_token(str(user.id), expires_delta=timedelta(minutes=60))
     async_client.headers = {"Authorization": f"Bearer {access_token}"}
-    
+
     return user, collection, document, chunks, async_client
 
 
@@ -105,9 +105,7 @@ class TestGetDocumentChunks:
     """获取文档分块列表测试"""
 
     @pytest.mark.asyncio
-    async def test_get_document_chunks_success(
-        self, authenticated_user_with_chunks, db_session: AsyncSession
-    ):
+    async def test_get_document_chunks_success(self, authenticated_user_with_chunks, db_session: AsyncSession):
         """测试成功获取文档分块列表"""
         user, collection, document, chunks, client = authenticated_user_with_chunks
 
@@ -117,7 +115,7 @@ class TestGetDocumentChunks:
         data = res.json()
         assert data["total"] == 3
         assert len(data["items"]) == 3
-        
+
         # 验证分块按 chunk_index 排序
         for i, item in enumerate(data["items"]):
             assert item["chunk_index"] == i
@@ -126,17 +124,12 @@ class TestGetDocumentChunks:
             assert item["collection_id"] == str(collection.id)
 
     @pytest.mark.asyncio
-    async def test_get_document_chunks_with_pagination(
-        self, authenticated_user_with_chunks, db_session: AsyncSession
-    ):
+    async def test_get_document_chunks_with_pagination(self, authenticated_user_with_chunks, db_session: AsyncSession):
         """测试分页获取文档分块"""
         user, collection, document, chunks, client = authenticated_user_with_chunks
 
         # 第一页
-        res = await client.get(
-            f"/api/v1/chunks/document/{document.id}",
-            params={"limit": 2, "offset": 0}
-        )
+        res = await client.get(f"/api/v1/chunks/document/{document.id}", params={"limit": 2, "offset": 0})
 
         assert res.status_code == 200
         data = res.json()
@@ -146,10 +139,7 @@ class TestGetDocumentChunks:
         assert data["items"][1]["chunk_index"] == 1
 
         # 第二页
-        res = await client.get(
-            f"/api/v1/chunks/document/{document.id}",
-            params={"limit": 2, "offset": 2}
-        )
+        res = await client.get(f"/api/v1/chunks/document/{document.id}", params={"limit": 2, "offset": 2})
 
         assert res.status_code == 200
         data = res.json()
@@ -158,9 +148,7 @@ class TestGetDocumentChunks:
         assert data["items"][0]["chunk_index"] == 2
 
     @pytest.mark.asyncio
-    async def test_get_document_chunks_not_found(
-        self, authenticated_user_with_chunks, db_session: AsyncSession
-    ):
+    async def test_get_document_chunks_not_found(self, authenticated_user_with_chunks, db_session: AsyncSession):
         """测试获取不存在的文档分块"""
         user, collection, document, chunks, client = authenticated_user_with_chunks
 
@@ -171,20 +159,16 @@ class TestGetDocumentChunks:
         assert "不存在或无权访问" in res.json()["detail"]
 
     @pytest.mark.asyncio
-    async def test_get_document_chunks_without_auth(
-        self, authenticated_user_with_chunks
-    ):
+    async def test_get_document_chunks_without_auth(self, authenticated_user_with_chunks):
         """测试未认证获取文档分块"""
         user, collection, document, chunks, client = authenticated_user_with_chunks
 
         # 创建一个新的客户端，不带认证头
-        from httpx import AsyncClient, ASGITransport
+        from httpx import ASGITransport, AsyncClient
+
         from ragserver.main import app
-        
-        async with AsyncClient(
-            transport=ASGITransport(app=app),
-            base_url="http://test"
-        ) as unauthenticated_client:
+
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as unauthenticated_client:
             res = await unauthenticated_client.get(f"/api/v1/chunks/document/{document.id}")
             assert res.status_code == 401
 
@@ -193,9 +177,7 @@ class TestGetChunkDetail:
     """获取单个分块详情测试"""
 
     @pytest.mark.asyncio
-    async def test_get_chunk_detail_success(
-        self, authenticated_user_with_chunks, db_session: AsyncSession
-    ):
+    async def test_get_chunk_detail_success(self, authenticated_user_with_chunks, db_session: AsyncSession):
         """测试成功获取分块详情"""
         user, collection, document, chunks, client = authenticated_user_with_chunks
 
@@ -210,9 +192,7 @@ class TestGetChunkDetail:
         assert data["embedding_model"] == "BAAI/bge-m3"
 
     @pytest.mark.asyncio
-    async def test_get_chunk_detail_not_found(
-        self, authenticated_user_with_chunks, db_session: AsyncSession
-    ):
+    async def test_get_chunk_detail_not_found(self, authenticated_user_with_chunks, db_session: AsyncSession):
         """测试获取不存在的分块详情"""
         user, collection, document, chunks, client = authenticated_user_with_chunks
 
@@ -227,9 +207,7 @@ class TestGetCollectionChunks:
     """获取知识库分块列表测试"""
 
     @pytest.mark.asyncio
-    async def test_get_collection_chunks_success(
-        self, authenticated_user_with_chunks, db_session: AsyncSession
-    ):
+    async def test_get_collection_chunks_success(self, authenticated_user_with_chunks, db_session: AsyncSession):
         """测试成功获取知识库分块列表"""
         user, collection, document, chunks, client = authenticated_user_with_chunks
 
@@ -247,10 +225,7 @@ class TestGetCollectionChunks:
         """测试分页获取知识库分块"""
         user, collection, document, chunks, client = authenticated_user_with_chunks
 
-        res = await client.get(
-            f"/api/v1/chunks/collection/{collection.id}",
-            params={"limit": 2, "offset": 0}
-        )
+        res = await client.get(f"/api/v1/chunks/collection/{collection.id}", params={"limit": 2, "offset": 0})
 
         assert res.status_code == 200
         data = res.json()
@@ -258,9 +233,7 @@ class TestGetCollectionChunks:
         assert len(data["items"]) == 2
 
     @pytest.mark.asyncio
-    async def test_get_collection_chunks_not_found(
-        self, authenticated_user_with_chunks, db_session: AsyncSession
-    ):
+    async def test_get_collection_chunks_not_found(self, authenticated_user_with_chunks, db_session: AsyncSession):
         """测试获取不存在的知识库分块"""
         user, collection, document, chunks, client = authenticated_user_with_chunks
 
@@ -275,9 +248,7 @@ class TestDeleteChunk:
     """删除分块测试"""
 
     @pytest.mark.asyncio
-    async def test_delete_chunk_success(
-        self, authenticated_user_with_chunks, db_session: AsyncSession
-    ):
+    async def test_delete_chunk_success(self, authenticated_user_with_chunks, db_session: AsyncSession):
         """测试成功删除分块"""
         user, collection, document, chunks, client = authenticated_user_with_chunks
 
@@ -287,9 +258,7 @@ class TestDeleteChunk:
         assert res.status_code == 204
 
         # 验证分块已删除
-        result = await db_session.execute(
-            select(DocumentChunk).where(DocumentChunk.id == chunk.id)
-        )
+        result = await db_session.execute(select(DocumentChunk).where(DocumentChunk.id == chunk.id))
         deleted_chunk = result.scalar_one_or_none()
         assert deleted_chunk is None
 
@@ -303,9 +272,7 @@ class TestDeleteChunk:
         # 这里假设删除操作会更新统计
 
     @pytest.mark.asyncio
-    async def test_delete_chunk_not_found(
-        self, authenticated_user_with_chunks, db_session: AsyncSession
-    ):
+    async def test_delete_chunk_not_found(self, authenticated_user_with_chunks, db_session: AsyncSession):
         """测试删除不存在的分块"""
         user, collection, document, chunks, client = authenticated_user_with_chunks
 
@@ -316,22 +283,18 @@ class TestDeleteChunk:
         assert "不存在或无权访问" in res.json()["detail"]
 
     @pytest.mark.asyncio
-    async def test_delete_chunk_without_auth(
-        self, authenticated_user_with_chunks
-    ):
+    async def test_delete_chunk_without_auth(self, authenticated_user_with_chunks):
         """测试未认证删除分块"""
         user, collection, document, chunks, client = authenticated_user_with_chunks
 
         chunk = chunks[0]
-        
+
         # 创建一个新的客户端，不带认证头
-        from httpx import AsyncClient, ASGITransport
+        from httpx import ASGITransport, AsyncClient
+
         from ragserver.main import app
-        
-        async with AsyncClient(
-            transport=ASGITransport(app=app),
-            base_url="http://test"
-        ) as unauthenticated_client:
+
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as unauthenticated_client:
             res = await unauthenticated_client.delete(f"/api/v1/chunks/{chunk.id}")
             assert res.status_code == 401
 
@@ -385,4 +348,3 @@ class TestChunkAccessControl:
 
         assert res.status_code == 404
         assert "不存在或无权访问" in res.json()["detail"]
-

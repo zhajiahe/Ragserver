@@ -1,28 +1,29 @@
-"""
-文档分块查询 API
+"""文档分块查询 API
 
 提供文档分块的查询功能
 """
-from typing import List, Optional
+
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status, Query
-from pydantic import BaseModel, Field, ConfigDict
-from sqlalchemy import select, func
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import BaseModel, ConfigDict
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ragserver.app.dependencies import get_db, get_current_active_user
-from ragserver.app.models import DocumentChunk, Document, Collection, User
+from ragserver.app.dependencies import get_current_active_user, get_db
+from ragserver.app.models import Collection, Document, DocumentChunk, User
 
 router = APIRouter(prefix="/api/v1/chunks", tags=["文档分块"])
 
 
 # ==================== Pydantic Schemas ====================
 
+
 class ChunkResponse(BaseModel):
     """分块响应模型"""
+
     model_config = ConfigDict(from_attributes=True)
-    
+
     id: UUID
     document_id: UUID
     collection_id: UUID
@@ -32,9 +33,9 @@ class ChunkResponse(BaseModel):
     embedding_model: str
     meta: dict
     created_at: str
-    
+
     @classmethod
-    def from_orm_with_similarity(cls, chunk: DocumentChunk, similarity: Optional[float] = None):
+    def from_orm_with_similarity(cls, chunk: DocumentChunk, similarity: float | None = None):
         """从ORM对象创建响应，可选包含相似度"""
         data = {
             "id": chunk.id,
@@ -54,35 +55,28 @@ class ChunkResponse(BaseModel):
 
 class ChunkListResponse(BaseModel):
     """分块列表响应"""
+
     total: int
-    items: List[ChunkResponse]
+    items: list[ChunkResponse]
 
 
 # ==================== Helper Functions ====================
 
-async def verify_document_access(
-    db: AsyncSession,
-    document_id: UUID,
-    user_id: UUID
-) -> Document:
+
+async def verify_document_access(db: AsyncSession, document_id: UUID, user_id: UUID) -> Document:
     """验证文档访问权限"""
-    query = select(Document).join(Collection).where(
-        Document.id == document_id,
-        Collection.user_id == user_id
-    )
+    query = select(Document).join(Collection).where(Document.id == document_id, Collection.user_id == user_id)
     result = await db.execute(query)
     document = result.scalar_one_or_none()
-    
+
     if not document:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="文档不存在或无权访问"
-        )
-    
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="文档不存在或无权访问")
+
     return document
 
 
 # ==================== API Endpoints ====================
+
 
 @router.get("/document/{document_id}", response_model=ChunkListResponse)
 async def get_document_chunks(
@@ -92,24 +86,21 @@ async def get_document_chunks(
     current_user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """
-    获取文档的所有分块
-    
+    """获取文档的所有分块
+
     - 需要认证
     - 只能查询自己的文档
     - 支持分页
     - 按 chunk_index 排序
     """
     # 验证文档访问权限
-    document = await verify_document_access(db, document_id, current_user.id)
-    
+    await verify_document_access(db, document_id, current_user.id)
+
     # 查询总数
-    count_query = select(func.count()).select_from(DocumentChunk).where(
-        DocumentChunk.document_id == document_id
-    )
+    count_query = select(func.count()).select_from(DocumentChunk).where(DocumentChunk.document_id == document_id)
     total_result = await db.execute(count_query)
     total = total_result.scalar()
-    
+
     # 查询分块列表
     query = (
         select(DocumentChunk)
@@ -120,7 +111,7 @@ async def get_document_chunks(
     )
     result = await db.execute(query)
     chunks = result.scalars().all()
-    
+
     # 转换为响应模型
     items = [
         ChunkResponse(
@@ -136,7 +127,7 @@ async def get_document_chunks(
         )
         for chunk in chunks
     ]
-    
+
     return ChunkListResponse(total=total, items=items)
 
 
@@ -146,9 +137,8 @@ async def get_chunk_detail(
     current_user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """
-    获取单个分块的详细信息
-    
+    """获取单个分块的详细信息
+
     - 需要认证
     - 只能查询自己的分块
     - 返回完整的分块信息（包含向量维度等）
@@ -158,20 +148,14 @@ async def get_chunk_detail(
         select(DocumentChunk)
         .join(Document)
         .join(Collection)
-        .where(
-            DocumentChunk.id == chunk_id,
-            Collection.user_id == current_user.id
-        )
+        .where(DocumentChunk.id == chunk_id, Collection.user_id == current_user.id)
     )
     result = await db.execute(query)
     chunk = result.scalar_one_or_none()
-    
+
     if not chunk:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="分块不存在或无权访问"
-        )
-    
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="分块不存在或无权访问")
+
     return ChunkResponse(
         id=chunk.id,
         document_id=chunk.document_id,
@@ -193,35 +177,26 @@ async def get_collection_chunks(
     current_user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """
-    获取知识库的所有分块
-    
+    """获取知识库的所有分块
+
     - 需要认证
     - 只能查询自己的知识库
     - 支持分页
     - 按创建时间倒序排序
     """
     # 验证知识库访问权限
-    collection_query = select(Collection).where(
-        Collection.id == collection_id,
-        Collection.user_id == current_user.id
-    )
+    collection_query = select(Collection).where(Collection.id == collection_id, Collection.user_id == current_user.id)
     collection_result = await db.execute(collection_query)
     collection = collection_result.scalar_one_or_none()
-    
+
     if not collection:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="知识库不存在或无权访问"
-        )
-    
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="知识库不存在或无权访问")
+
     # 查询总数
-    count_query = select(func.count()).select_from(DocumentChunk).where(
-        DocumentChunk.collection_id == collection_id
-    )
+    count_query = select(func.count()).select_from(DocumentChunk).where(DocumentChunk.collection_id == collection_id)
     total_result = await db.execute(count_query)
     total = total_result.scalar()
-    
+
     # 查询分块列表
     query = (
         select(DocumentChunk)
@@ -232,7 +207,7 @@ async def get_collection_chunks(
     )
     result = await db.execute(query)
     chunks = result.scalars().all()
-    
+
     # 转换为响应模型
     items = [
         ChunkResponse(
@@ -248,7 +223,7 @@ async def get_collection_chunks(
         )
         for chunk in chunks
     ]
-    
+
     return ChunkListResponse(total=total, items=items)
 
 
@@ -258,9 +233,8 @@ async def delete_chunk(
     current_user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """
-    删除单个分块
-    
+    """删除单个分块
+
     - 需要认证
     - 只能删除自己的分块
     - 会更新文档的分块统计
@@ -270,37 +244,30 @@ async def delete_chunk(
         select(DocumentChunk)
         .join(Document)
         .join(Collection)
-        .where(
-            DocumentChunk.id == chunk_id,
-            Collection.user_id == current_user.id
-        )
+        .where(DocumentChunk.id == chunk_id, Collection.user_id == current_user.id)
     )
     result = await db.execute(query)
     chunk = result.scalar_one_or_none()
-    
+
     if not chunk:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="分块不存在或无权访问"
-        )
-    
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="分块不存在或无权访问")
+
     # 获取文档和知识库
     document_query = select(Document).where(Document.id == chunk.document_id)
     doc_result = await db.execute(document_query)
     document = doc_result.scalar_one()
-    
+
     collection_query = select(Collection).where(Collection.id == chunk.collection_id)
     coll_result = await db.execute(collection_query)
     collection = coll_result.scalar_one()
-    
+
     # 删除分块
     await db.delete(chunk)
-    
+
     # 更新统计
     if document.chunk_count > 0:
         document.chunk_count -= 1
     if collection.chunk_count > 0:
         collection.chunk_count -= 1
-    
-    await db.commit()
 
+    await db.commit()

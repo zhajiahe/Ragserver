@@ -1,30 +1,30 @@
-"""
-文档管理集成测试
+"""文档管理集成测试
 
 测试文档上传、删除、更新、查询、处理等接口
 """
-import pytest
-from httpx import AsyncClient
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
-from uuid import uuid4
 
-from ragserver.app.models import User, Collection, Document, DocumentChunk
-from ragserver.app.dependencies.security import create_access_token, get_password_hash
 from datetime import timedelta
 from io import BytesIO
-from typing import List
+from uuid import uuid4
+
+import pytest
+from httpx import AsyncClient
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from ragserver.app.dependencies.security import create_access_token, get_password_hash
+from ragserver.app.models import Collection, Document, DocumentChunk, User
 
 
 @pytest.fixture(scope="function")
 async def setup_db(db_session: AsyncSession):
     """设置数据库依赖注入覆盖"""
-    from ragserver.main import app
     from ragserver.app.dependencies import get_db
-    
+    from ragserver.main import app
+
     async def override_get_db():
         yield db_session
-    
+
     app.dependency_overrides[get_db] = override_get_db
     yield
     app.dependency_overrides.clear()
@@ -57,7 +57,7 @@ async def authenticated_user_with_kb(async_client: AsyncClient, db_session: Asyn
 
     access_token = create_access_token(str(user.id), expires_delta=timedelta(minutes=60))
     async_client.headers = {"Authorization": f"Bearer {access_token}"}
-    
+
     return user, collection, async_client
 
 
@@ -65,16 +65,12 @@ class TestDocumentUpload:
     """文档上传测试"""
 
     @pytest.mark.asyncio
-    async def test_upload_single_document(
-        self, authenticated_user_with_kb, db_session: AsyncSession
-    ):
+    async def test_upload_single_document(self, authenticated_user_with_kb, db_session: AsyncSession):
         """测试上传单个文档"""
         user, collection, client = authenticated_user_with_kb
 
         # 模拟文件上传
-        files = [
-            ("files", ("test.txt", BytesIO(b"Hello World"), "text/plain"))
-        ]
+        files = [("files", ("test.txt", BytesIO(b"Hello World"), "text/plain"))]
 
         res = await client.post(
             f"/api/v1/collections/{collection.id}/upload",
@@ -90,15 +86,11 @@ class TestDocumentUpload:
         assert result[0]["uploaded_by"] == str(user.id)
 
         # 验证数据库
-        doc = await db_session.execute(
-            select(Document).filter_by(id=result[0]["id"])
-        )
+        doc = await db_session.execute(select(Document).filter_by(id=result[0]["id"]))
         assert doc.scalar_one().filename == "test.txt"
 
     @pytest.mark.asyncio
-    async def test_upload_multiple_documents(
-        self, authenticated_user_with_kb, db_session: AsyncSession
-    ):
+    async def test_upload_multiple_documents(self, authenticated_user_with_kb, db_session: AsyncSession):
         """测试批量上传文档"""
         user, collection, client = authenticated_user_with_kb
 
@@ -121,28 +113,22 @@ class TestDocumentUpload:
     async def test_upload_without_auth(self, async_client: AsyncClient, db_session: AsyncSession, setup_db):
         """测试未认证用户上传文档"""
         fake_kb_id = uuid4()
-        files = [
-            ("files", ("test.txt", BytesIO(b"Hello"), "text/plain"))
-        ]
-        
+        files = [("files", ("test.txt", BytesIO(b"Hello"), "text/plain"))]
+
         res = await async_client.post(
             f"/api/v1/collections/{fake_kb_id}/upload",
             files=files,
         )
-        
+
         assert res.status_code == 401
 
     @pytest.mark.asyncio
-    async def test_upload_to_nonexistent_kb(
-        self, authenticated_user_with_kb, db_session: AsyncSession
-    ):
+    async def test_upload_to_nonexistent_kb(self, authenticated_user_with_kb, db_session: AsyncSession):
         """测试上传到不存在的知识库"""
         user, collection, client = authenticated_user_with_kb
 
         fake_kb_id = uuid4()
-        files = [
-            ("files", ("test.txt", BytesIO(b"Hello"), "text/plain"))
-        ]
+        files = [("files", ("test.txt", BytesIO(b"Hello"), "text/plain"))]
 
         res = await client.post(
             f"/api/v1/collections/{fake_kb_id}/upload",
@@ -156,9 +142,7 @@ class TestDocumentList:
     """文档列表测试"""
 
     @pytest.mark.asyncio
-    async def test_get_document_list(
-        self, authenticated_user_with_kb, db_session: AsyncSession
-    ):
+    async def test_get_document_list(self, authenticated_user_with_kb, db_session: AsyncSession):
         """测试获取文档列表"""
         user, collection, client = authenticated_user_with_kb
 
@@ -186,9 +170,7 @@ class TestDocumentList:
         assert len(result["items"]) == 3
 
     @pytest.mark.asyncio
-    async def test_get_document_list_with_status_filter(
-        self, authenticated_user_with_kb, db_session: AsyncSession
-    ):
+    async def test_get_document_list_with_status_filter(self, authenticated_user_with_kb, db_session: AsyncSession):
         """测试按状态过滤文档列表"""
         user, collection, client = authenticated_user_with_kb
 
@@ -210,9 +192,7 @@ class TestDocumentList:
         await db_session.commit()
 
         # 过滤 completed
-        res = await client.get(
-            f"/api/v1/collections/{collection.id}/documents?status_filter=completed"
-        )
+        res = await client.get(f"/api/v1/collections/{collection.id}/documents?status_filter=completed")
 
         assert res.status_code == 200
         result = res.json()
@@ -220,9 +200,7 @@ class TestDocumentList:
         assert result["items"][0]["status"] == "completed"
 
     @pytest.mark.asyncio
-    async def test_get_document_list_with_pagination(
-        self, authenticated_user_with_kb, db_session: AsyncSession
-    ):
+    async def test_get_document_list_with_pagination(self, authenticated_user_with_kb, db_session: AsyncSession):
         """测试分页"""
         user, collection, client = authenticated_user_with_kb
 
@@ -243,18 +221,14 @@ class TestDocumentList:
         await db_session.commit()
 
         # 第一页
-        res = await client.get(
-            f"/api/v1/collections/{collection.id}/documents?limit=5&offset=0"
-        )
+        res = await client.get(f"/api/v1/collections/{collection.id}/documents?limit=5&offset=0")
         assert res.status_code == 200
         result = res.json()
         assert result["total"] == 10
         assert len(result["items"]) == 5
 
         # 第二页
-        res = await client.get(
-            f"/api/v1/collections/{collection.id}/documents?limit=5&offset=5"
-        )
+        res = await client.get(f"/api/v1/collections/{collection.id}/documents?limit=5&offset=5")
         assert res.status_code == 200
         result = res.json()
         assert result["total"] == 10
@@ -265,9 +239,7 @@ class TestDocumentDetail:
     """文档详情测试"""
 
     @pytest.mark.asyncio
-    async def test_get_document_detail(
-        self, authenticated_user_with_kb, db_session: AsyncSession
-    ):
+    async def test_get_document_detail(self, authenticated_user_with_kb, db_session: AsyncSession):
         """测试获取文档详情"""
         user, collection, client = authenticated_user_with_kb
 
@@ -296,9 +268,7 @@ class TestDocumentDetail:
         assert result["chunk_count"] == 5
 
     @pytest.mark.asyncio
-    async def test_get_document_detail_not_found(
-        self, authenticated_user_with_kb, db_session: AsyncSession
-    ):
+    async def test_get_document_detail_not_found(self, authenticated_user_with_kb, db_session: AsyncSession):
         """测试获取不存在的文档"""
         user, collection, client = authenticated_user_with_kb
 
@@ -312,9 +282,7 @@ class TestDocumentUpdate:
     """文档更新测试"""
 
     @pytest.mark.asyncio
-    async def test_update_document_config(
-        self, authenticated_user_with_kb, db_session: AsyncSession
-    ):
+    async def test_update_document_config(self, authenticated_user_with_kb, db_session: AsyncSession):
         """测试更新文档配置"""
         user, collection, client = authenticated_user_with_kb
 
@@ -350,9 +318,7 @@ class TestDocumentDelete:
     """文档删除测试"""
 
     @pytest.mark.asyncio
-    async def test_delete_documents(
-        self, authenticated_user_with_kb, db_session: AsyncSession
-    ):
+    async def test_delete_documents(self, authenticated_user_with_kb, db_session: AsyncSession):
         """测试批量删除文档"""
         user, collection, client = authenticated_user_with_kb
 
@@ -378,45 +344,30 @@ class TestDocumentDelete:
 
         doc_ids = [str(doc.id) for doc in docs]
 
-        res = await client.request(
-            "DELETE",
-            "/api/v1/documents",
-            json={"document_ids": doc_ids}
-        )
+        res = await client.request("DELETE", "/api/v1/documents", json={"document_ids": doc_ids})
 
         assert res.status_code == 204
 
         # 验证已删除
         for doc_id in doc_ids:
-            result = await db_session.execute(
-                select(Document).filter_by(id=doc_id)
-            )
+            result = await db_session.execute(select(Document).filter_by(id=doc_id))
             assert result.scalar_one_or_none() is None
 
     @pytest.mark.asyncio
-    async def test_delete_empty_list(
-        self, authenticated_user_with_kb, db_session: AsyncSession
-    ):
+    async def test_delete_empty_list(self, authenticated_user_with_kb, db_session: AsyncSession):
         """测试删除空列表"""
         user, collection, client = authenticated_user_with_kb
 
-        res = await client.request(
-            "DELETE",
-            "/api/v1/documents",
-            json={"document_ids": []}
-        )
+        res = await client.request("DELETE", "/api/v1/documents", json={"document_ids": []})
 
         assert res.status_code == 400
-
 
 
 class TestDocumentStatus:
     """文档状态查询测试"""
 
     @pytest.mark.asyncio
-    async def test_get_document_status(
-        self, authenticated_user_with_kb, db_session: AsyncSession
-    ):
+    async def test_get_document_status(self, authenticated_user_with_kb, db_session: AsyncSession):
         """测试查询文档状态"""
         user, collection, client = authenticated_user_with_kb
 
@@ -450,9 +401,7 @@ class TestDocumentChunks:
     """文档分块测试"""
 
     @pytest.mark.asyncio
-    async def test_get_document_chunks(
-        self, authenticated_user_with_kb, db_session: AsyncSession
-    ):
+    async def test_get_document_chunks(self, authenticated_user_with_kb, db_session: AsyncSession):
         """测试获取文档分块列表"""
         user, collection, client = authenticated_user_with_kb
 
@@ -495,9 +444,7 @@ class TestDocumentChunks:
         assert result[2]["chunk_index"] == 2
 
     @pytest.mark.asyncio
-    async def test_get_document_chunks_pagination(
-        self, authenticated_user_with_kb, db_session: AsyncSession
-    ):
+    async def test_get_document_chunks_pagination(self, authenticated_user_with_kb, db_session: AsyncSession):
         """测试文档分块分页"""
         user, collection, client = authenticated_user_with_kb
 
@@ -586,4 +533,3 @@ class TestDocumentPermissions:
         # user1 尝试访问 user2 的文档
         res = await client1.get(f"/api/v1/documents/{doc2.id}")
         assert res.status_code == 404
-

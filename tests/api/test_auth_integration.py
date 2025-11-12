@@ -1,27 +1,27 @@
-"""
-用户认证 API 集成测试
-"""
+"""用户认证 API 集成测试"""
+
 import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ragserver.main import app
 from ragserver.app.dependencies import get_db
-from ragserver.app.models import User, Base
 from ragserver.app.dependencies.security import get_password_hash
+from ragserver.app.models import User
+from ragserver.main import app
 
 
 @pytest.fixture(autouse=True)
 async def setup_db(db_session: AsyncSession):
     """设置数据库依赖注入"""
+
     # 覆盖依赖注入
     async def override_get_db():
         yield db_session
-    
+
     app.dependency_overrides[get_db] = override_get_db
     yield
-    
+
     # 清理
     app.dependency_overrides.clear()
 
@@ -54,36 +54,36 @@ class TestRegister:
             "password": "Password123!",
             "full_name": "New User",
         }
-        
+
         # 1. 注册新用户
         res = await async_client.post("/api/v1/auth/register", json=payload)
         assert res.status_code == 201
-        
+
         data = res.json()
         assert "access_token" in data
         assert data["token_type"] == "bearer"
         assert data["expires_in"] == 60 * 60 * 24
-        
+
         # 2. 验证数据库写入
-        result = await db_session.execute(
-            select(User).where(User.username == "newuser")
-        )
+        result = await db_session.execute(select(User).where(User.username == "newuser"))
         user = result.scalar_one()
         assert user.email == "newuser@example.com"
         assert user.full_name == "New User"
         assert user.is_active is True
 
     @pytest.mark.asyncio
-    async def test_register_duplicate_username(self, async_client: AsyncClient, db_session: AsyncSession, test_user: User):
+    async def test_register_duplicate_username(
+        self, async_client: AsyncClient, db_session: AsyncSession, test_user: User
+    ):
         """测试用户名重复"""
         payload = {
             "username": "testuser",  # 已存在
             "email": "another@example.com",
             "password": "Password123!",
         }
-        
+
         res = await async_client.post("/api/v1/auth/register", json=payload)
-        
+
         assert res.status_code == 400
         assert "用户名或邮箱已存在" in res.json()["detail"]
 
@@ -95,9 +95,9 @@ class TestRegister:
             "email": "test@example.com",  # 已存在
             "password": "Password123!",
         }
-        
+
         res = await async_client.post("/api/v1/auth/register", json=payload)
-        
+
         assert res.status_code == 400
         assert "用户名或邮箱已存在" in res.json()["detail"]
 
@@ -109,9 +109,9 @@ class TestRegister:
             "email": "test@example.com",
             "password": "Password123!",
         }
-        
+
         res = await async_client.post("/api/v1/auth/register", json=payload)
-        
+
         assert res.status_code == 422  # Validation error
 
     @pytest.mark.asyncio
@@ -122,9 +122,9 @@ class TestRegister:
             "email": "test@example.com",
             "password": "short",  # 少于8个字符
         }
-        
+
         res = await async_client.post("/api/v1/auth/register", json=payload)
-        
+
         assert res.status_code == 422
 
     @pytest.mark.asyncio
@@ -135,9 +135,9 @@ class TestRegister:
             "email": "not-an-email",
             "password": "Password123!",
         }
-        
+
         res = await async_client.post("/api/v1/auth/register", json=payload)
-        
+
         assert res.status_code == 422
 
 
@@ -151,9 +151,9 @@ class TestLogin:
             "username_or_email": "testuser",
             "password": "Test1234!",
         }
-        
+
         res = await async_client.post("/api/v1/auth/login", json=payload)
-        
+
         assert res.status_code == 200
         data = res.json()
         assert "access_token" in data
@@ -167,9 +167,9 @@ class TestLogin:
             "username_or_email": "test@example.com",
             "password": "Test1234!",
         }
-        
+
         res = await async_client.post("/api/v1/auth/login", json=payload)
-        
+
         assert res.status_code == 200
         data = res.json()
         assert "access_token" in data
@@ -181,9 +181,9 @@ class TestLogin:
             "username_or_email": "testuser",
             "password": "WrongPassword!",
         }
-        
+
         res = await async_client.post("/api/v1/auth/login", json=payload)
-        
+
         assert res.status_code == 400
         assert "用户名或密码错误" in res.json()["detail"]
 
@@ -194,9 +194,9 @@ class TestLogin:
             "username_or_email": "nonexistent",
             "password": "Password123!",
         }
-        
+
         res = await async_client.post("/api/v1/auth/login", json=payload)
-        
+
         assert res.status_code == 400
         assert "用户名或密码错误" in res.json()["detail"]
 
@@ -211,14 +211,14 @@ class TestLogin:
         )
         db_session.add(inactive_user)
         await db_session.commit()
-        
+
         payload = {
             "username_or_email": "inactive",
             "password": "Test1234!",
         }
-        
+
         res = await async_client.post("/api/v1/auth/login", json=payload)
-        
+
         assert res.status_code == 400
         assert "用户未激活" in res.json()["detail"]
 
@@ -236,26 +236,23 @@ class TestChangePassword:
         }
         login_res = await async_client.post("/api/v1/auth/login", json=login_payload)
         token = login_res.json()["access_token"]
-        
+
         # 2. 修改密码
         change_payload = {
             "old_password": "Test1234!",
             "new_password": "NewPassword123!",
         }
         headers = {"Authorization": f"Bearer {token}"}
-        res = await async_client.post(
-            "/api/v1/auth/change-password",
-            json=change_payload,
-            headers=headers
-        )
-        
+        res = await async_client.post("/api/v1/auth/change-password", json=change_payload, headers=headers)
+
         assert res.status_code == 204
-        
+
         # 3. 验证数据库中密码已更新
         await db_session.refresh(test_user)
         from ragserver.app.dependencies.security import verify_password
+
         assert verify_password("NewPassword123!", test_user.hashed_password)
-        
+
         # 4. 验证新密码可以登录
         new_login_payload = {
             "username_or_email": "testuser",
@@ -274,19 +271,15 @@ class TestChangePassword:
         }
         login_res = await async_client.post("/api/v1/auth/login", json=login_payload)
         token = login_res.json()["access_token"]
-        
+
         # 2. 使用错误的原密码
         change_payload = {
             "old_password": "WrongOldPassword!",
             "new_password": "NewPassword123!",
         }
         headers = {"Authorization": f"Bearer {token}"}
-        res = await async_client.post(
-            "/api/v1/auth/change-password",
-            json=change_payload,
-            headers=headers
-        )
-        
+        res = await async_client.post("/api/v1/auth/change-password", json=change_payload, headers=headers)
+
         assert res.status_code == 400
         assert "原密码不正确" in res.json()["detail"]
 
@@ -297,9 +290,9 @@ class TestChangePassword:
             "old_password": "Test1234!",
             "new_password": "NewPassword123!",
         }
-        
+
         res = await async_client.post("/api/v1/auth/change-password", json=change_payload)
-        
+
         assert res.status_code == 401  # Unauthorized
 
     @pytest.mark.asyncio
@@ -312,19 +305,15 @@ class TestChangePassword:
         }
         login_res = await async_client.post("/api/v1/auth/login", json=login_payload)
         token = login_res.json()["access_token"]
-        
+
         # 2. 新密码太短
         change_payload = {
             "old_password": "Test1234!",
             "new_password": "short",
         }
         headers = {"Authorization": f"Bearer {token}"}
-        res = await async_client.post(
-            "/api/v1/auth/change-password",
-            json=change_payload,
-            headers=headers
-        )
-        
+        res = await async_client.post("/api/v1/auth/change-password", json=change_payload, headers=headers)
+
         assert res.status_code == 422
 
 
@@ -344,33 +333,28 @@ class TestAuthIntegration:
         register_res = await async_client.post("/api/v1/auth/register", json=register_payload)
         assert register_res.status_code == 201
         register_token = register_res.json()["access_token"]
-        
+
         # 2. 验证用户已创建
-        result = await db_session.execute(
-            select(User).where(User.username == "flowuser")
-        )
+        result = await db_session.execute(select(User).where(User.username == "flowuser"))
         user = result.scalar_one()
         assert user.email == "flow@example.com"
         assert user.full_name == "Flow User"
-        
+
         # 3. 使用注册返回的 token 修改密码
         change_payload = {
             "old_password": "InitialPass123!",
             "new_password": "NewPass456!",
         }
         headers = {"Authorization": f"Bearer {register_token}"}
-        change_res = await async_client.post(
-            "/api/v1/auth/change-password",
-            json=change_payload,
-            headers=headers
-        )
+        change_res = await async_client.post("/api/v1/auth/change-password", json=change_payload, headers=headers)
         assert change_res.status_code == 204
-        
+
         # 4. 验证密码已更新
         await db_session.refresh(user)
         from ragserver.app.dependencies.security import verify_password
+
         assert verify_password("NewPass456!", user.hashed_password)
-        
+
         # 5. 使用新密码登录
         login_payload = {
             "username_or_email": "flowuser",
@@ -379,7 +363,7 @@ class TestAuthIntegration:
         login_res = await async_client.post("/api/v1/auth/login", json=login_payload)
         assert login_res.status_code == 200
         assert "access_token" in login_res.json()
-        
+
         # 6. 验证旧密码不能登录
         old_login_payload = {
             "username_or_email": "flowuser",
@@ -399,14 +383,12 @@ class TestAuthIntegration:
         }
         register_res = await async_client.post("/api/v1/auth/register", json=register_payload)
         assert register_res.status_code == 201
-        
+
         # 2. 验证数据库中用户存在
-        result = await db_session.execute(
-            select(User).where(User.username == "quickuser")
-        )
+        result = await db_session.execute(select(User).where(User.username == "quickuser"))
         user = result.scalar_one()
         assert user is not None
-        
+
         # 3. 立即使用相同凭证登录
         login_payload = {
             "username_or_email": "quickuser",
@@ -414,21 +396,16 @@ class TestAuthIntegration:
         }
         login_res = await async_client.post("/api/v1/auth/login", json=login_payload)
         assert login_res.status_code == 200
-        
+
         # 4. 验证两个 token 都有效（都能用来修改密码）
         register_token = register_res.json()["access_token"]
-        login_token = login_res.json()["access_token"]
-        
+
         change_payload = {
             "old_password": "QuickPass123!",
             "new_password": "NewQuickPass456!",
         }
-        
+
         # 使用注册 token
         headers = {"Authorization": f"Bearer {register_token}"}
-        res = await async_client.post(
-            "/api/v1/auth/change-password",
-            json=change_payload,
-            headers=headers
-        )
+        res = await async_client.post("/api/v1/auth/change-password", json=change_payload, headers=headers)
         assert res.status_code == 204

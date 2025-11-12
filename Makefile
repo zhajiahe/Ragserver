@@ -101,3 +101,16 @@ up: docker-up start ## 启动所有服务
 
 down: stop docker-down ## 停止所有服务
 	@echo "$(GREEN)✓ All services stopped$(NC)"
+
+
+##@lint
+
+lint: ## 运行lint
+	@echo "$(BLUE)Running lint...$(NC)"
+	@source $(VENV)/bin/activate && ruff check . --fix
+	@echo "$(GREEN)✓ Lint passed$(NC)"
+
+format: ## 格式化代码
+	@echo "$(BLUE)Formatting code...$(NC)"
+	@source $(VENV)/bin/activate && ruff format .
+	@echo "$(GREEN)✓ Code formatted$(NC)"
