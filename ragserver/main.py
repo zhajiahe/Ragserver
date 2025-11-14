@@ -7,7 +7,7 @@ from fastapi.responses import JSONResponse
 from fastapi_radar import Radar
 
 # 导入所有 API 路由
-from ragserver.app.api import auth, chunks, collections, documents, parser, search
+from ragserver.app.api import auth, chunks, collections, documents, parser, search, users
 from ragserver.app.dependencies.db import async_engine
 
 # 导入中间件
@@ -57,6 +57,9 @@ def create_app() -> FastAPI:
     # ==================== 注册路由 ====================
     # 认证路由
     app.include_router(auth.router)
+    
+    # 用户路由
+    app.include_router(users.router)
 
     # 知识库管理路由
     app.include_router(collections.router)

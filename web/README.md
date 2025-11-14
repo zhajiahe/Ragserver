@@ -1,89 +1,89 @@
-# React + Vite + TypeScript Template (react-vite-ui)
+# RAG 知识库管理平台 - 前端项目
 
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/Dan5py/react-vite-ui/blob/main/LICENSE)
+基于 [react-vite-shadcn-ui](https://github.com/dan5py/react-vite-shadcn-ui) 模板开发的知识库管理系统前端。
 
-A React + Vite template powered by shadcn/ui.
+## 技术栈
 
-> [!NOTE]
-> This template uses Tailwind v3, if you want to use Tailwind v4, check the [tw4 branch](https://github.com/dan5py/react-vite-shadcn-ui/tree/tw4).
+- **React 19** + **TypeScript**
+- **Vite** - 构建工具
+- **shadcn/ui** - UI 组件库
+- **TailwindCSS** - 样式方案
+- **Zustand** - 状态管理
+- **TanStack Query** - 数据获取
+- **React Router** - 路由管理
+- **React Hook Form** + **Zod** - 表单验证
 
-## 🎉 Features
+## 快速开始
 
-- **React** - A JavaScript library for building user interfaces.
-- **Vite** - A fast, opinionated frontend build tool.
-- **TypeScript** - A typed superset of JavaScript that compiles to plain JavaScript.
-- **Tailwind CSS** - A utility-first CSS framework. (`v3`)
-- **Tailwind Prettier Plugin** - A Prettier plugin for formatting Tailwind CSS classes.
-- **ESLint** - A pluggable linting utility for JavaScript and TypeScript.
-- **PostCSS** - A tool for transforming CSS with JavaScript.
-- **Autoprefixer** - A PostCSS plugin to parse CSS and add vendor prefixes.
-- **shadcn/ui** - Beautifully designed components that you can copy and paste into your apps.
+### 安装依赖
 
-## ⚙️ Prerequisites
-
-Make sure you have the following installed on your development machine:
-
-- Node.js (version 22 or above)
-- pnpm (package manager)
-
-## 🚀 Getting Started
-
-Follow these steps to get started with the react-vite-ui template:
-
-1. Clone the repository:
-
-   ```bash
-   git clone https://github.com/dan5py/react-vite-ui.git
-   ```
-
-2. Navigate to the project directory:
-
-   ```bash
-   cd react-vite-ui
-   ```
-
-3. Install the dependencies:
-
-   ```bash
-   pnpm install
-   ```
-
-4. Start the development server:
-
-   ```bash
-   pnpm dev
-   ```
-
-## 📜 Available Scripts
-
-- pnpm dev - Starts the development server.
-- pnpm build - Builds the production-ready code.
-- pnpm lint - Runs ESLint to analyze and lint the code.
-- pnpm preview - Starts the Vite development server in preview mode.
-
-## 📂 Project Structure
-
-The project structure follows a standard React application layout:
-
-```python
-react-vite-ui/
-  ├── node_modules/      # Project dependencies
-  ├── public/            # Public assets
-  ├── src/               # Application source code
-  │   ├── components/    # React components
-  │   │   └── ui/        # shadc/ui components
-  │   ├── styles/        # CSS stylesheets
-  │   ├── lib/           # Utility functions
-  │   ├── App.tsx        # Application entry point
-  │   └── index.tsx      # Main rendering file
-  ├── eslint.config.js     # ESLint configuration
-  ├── index.html         # HTML entry point
-  ├── postcss.config.js  # PostCSS configuration
-  ├── tailwind.config.ts # Tailwind CSS configuration
-  ├── tsconfig.json      # TypeScript configuration
-  └── vite.config.ts     # Vite configuration
+```bash
+pnpm install
 ```
 
-## 📄 License
+### 开发模式
 
-This project is licensed under the MIT License. See the [LICENSE](https://choosealicense.com/licenses/mit/) file for details.
+```bash
+pnpm dev
+```
+
+### 构建生产版本
+
+```bash
+pnpm build
+```
+
+### 预览生产版本
+
+```bash
+pnpm preview
+```
+
+## 项目结构
+
+```
+src/
+├── components/       # 组件
+│   ├── ui/          # shadcn/ui 组件
+│   ├── layout/      # 布局组件
+│   ├── collection/  # 知识库组件
+│   ├── document/    # 文档组件
+│   ├── search/      # 搜索组件
+│   └── share/       # 分享组件
+├── pages/           # 页面
+├── api/             # API 接口
+├── hooks/           # 自定义 Hooks
+├── store/           # 状态管理
+├── lib/             # 工具函数
+└── types/           # 类型定义
+```
+
+## 环境配置
+
+复制 `.env.example` 为 `.env.development`:
+
+```bash
+cp .env.example .env.development
+```
+
+配置项：
+
+```env
+VITE_API_BASE_URL=http://localhost:8000
+VITE_APP_TITLE=RAG知识库管理平台
+VITE_UPLOAD_MAX_SIZE=104857600
+```
+
+## 添加 shadcn/ui 组件
+
+```bash
+npx shadcn@latest add <component-name>
+```
+
+## 开发指南
+
+详见项目根目录的 `FRONTEND_DESIGN.md` 文档。
+
+## License
+
+MIT
